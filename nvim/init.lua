@@ -416,13 +416,11 @@ require("lazy").setup({
           local is_file = vim.fn.filereadable(data.file) == 1
           local is_empty = data.file == "" and vim.bo[data.buf].buftype == ""
           if (is_file or is_empty) and not vim.o.diff then
-            if vim.env.TMUX then
-        -- In tmux: open treemux sidebar if not already open (never closes it)
-        vim.fn.jobstart({ vim.fn.expand("~/.config/tmux/ensure_treemux.sh") })
-      else
-        -- Outside tmux: use nvim-tree directly
-        require("nvim-tree.api").tree.toggle({ focus = false, find_file = true })
-      end
+            -- Outside tmux: use nvim-tree directly (in tmux, treemux sidebar is
+            -- opened by tdl.sh via run-shell before nvim starts)
+            if not vim.env.TMUX or vim.env.TMUX == "" then
+              require("nvim-tree.api").tree.toggle({ focus = false, find_file = true })
+            end
           end
           -- Open cheatsheet when launched with no file (empty buffer = fresh tdl session)
           if is_empty and not vim.o.diff then

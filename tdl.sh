@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# tdl.sh — executed directly under bash (never sourced).
-# Called by the tdl() shim in ~/.config/.aliases.
+# tdl.sh — main entry point. Symlinked into ~/.local/bin/tdl by install.sh.
 #
 # Isolation: tdl runs on its own tmux server socket (-L tdl) with its own
 # config (-f), and launches nvim as NVIM_APPNAME=nvim-tdl so it never

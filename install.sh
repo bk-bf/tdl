@@ -91,22 +91,13 @@ _nvim_pid=$!
 _spin "syncing nvim-tdl plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
 
-# ── 6. Shell integration — inject aliases source line ────────────────────────
+# ── 6. Shell integration — symlink tdl into PATH ─────────────────────────────
 echo "==> Wiring shell integration..."
 
-ALIASES_FILE="$HOME/.config/.aliases"
-ALIASES_LINE="source $TDL/aliases.sh"
-
-if [[ -f "$ALIASES_FILE" ]]; then
-  if grep -qF "$ALIASES_LINE" "$ALIASES_FILE"; then
-    echo "==> $ALIASES_FILE already sources aliases.sh"
-  else
-    printf '\n# tdl IDE\n%s\n' "$ALIASES_LINE" >> "$ALIASES_FILE"
-    echo "==> Added source line to $ALIASES_FILE"
-  fi
-else
-  echo "==> $ALIASES_FILE not found — add manually: $ALIASES_LINE"
-fi
+mkdir -p "$HOME/.local/bin"
+ln -sf "$TDL/tdl.sh" "$HOME/.local/bin/tdl"
+echo "==> Symlinked: ~/.local/bin/tdl -> $TDL/tdl.sh"
+echo "==> Ensure ~/.local/bin is on your PATH (it is by default on most distros)."
 
 echo ""
 echo "==> tdl install complete. Run 'tdl' in any directory to launch the IDE."
