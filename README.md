@@ -57,6 +57,7 @@ Session names are auto-generated as `nvim@<dirname>`.
 3. Installs the `kiyoon/treemux` plugin via TPM headless install
 4. Creates symlinks for `nvim-treemux/` config and `ensure_treemux.sh`
 5. Bootstraps nvim-treemux plugins headlessly via `lazy sync`
+6. Injects `source` lines into `~/.config/.aliases` and `~/.config/tmux/.tmux.conf` (idempotent)
 
 ## Updating treemux plugin
 
