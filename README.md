@@ -59,7 +59,7 @@ Session names are auto-generated as `nvim@<dirname>`.
    - `~/.config/nvim` → `tdl/nvim/` (main nvim config)
    - `~/.config/nvim-treemux/` files → `tdl/nvim-treemux/`
    - `~/.config/tmux/ensure_treemux.sh` → `tdl/ensure_treemux.sh`
-5. Bootstraps nvim-treemux plugins headlessly via `lazy sync`
+5. Bootstraps nvim-treemux and main nvim plugins headlessly via `lazy sync`
 6. Injects `source` lines into `~/.config/.aliases` and `~/.config/tmux/.tmux.conf` (idempotent)
 
 ## Updating treemux plugin

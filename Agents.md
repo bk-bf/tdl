@@ -69,7 +69,7 @@ Managed by lazy.nvim, isolated via `NVIM_APPNAME=nvim-treemux` (data dir: `~/.lo
 | `aserowy/tmux.nvim` | tmux/nvim pane navigation + register sync |
 | `folke/tokyonight.nvim` | Colorscheme (tokyonight-night) |
 
-`lazy-lock.json` is excluded from this repo (gitignore). Plugins install at latest on fresh machines.
+`lazy-lock.json` is tracked in this repo. On fresh installs plugins are pinned to these versions; run `:Lazy update` + commit the updated lockfile to advance pins.
 
 ## watch_and_update.sh — divergence from upstream
 

@@ -75,6 +75,12 @@ _nvim_pid=$!
 _spin "syncing nvim-treemux plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run, plugins still installed)"
 
+echo "==> Bootstrapping main nvim plugins (lazy sync)..."
+nvim --headless "+Lazy! sync" +qa 2>/dev/null &
+_nvim_pid=$!
+_spin "syncing main nvim plugins…" $_nvim_pid
+wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run, plugins still installed)"
+
 # ── 6. Shell integration — inject source lines if not already present ────────
 echo "==> Wiring shell integration..."
 

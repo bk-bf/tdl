@@ -7,8 +7,8 @@ REPO="https://github.com/bk-bf/tdl.git"
 DEFAULT_DEST="$HOME/.local/share/tdl"
 DEST="${TDL_DIR:-$DEFAULT_DEST}"
 
-if [[ -d "$DEST/.git" ]]; then
-  echo "==> tdl already cloned at $DEST, pulling latest..."
+if git -C "$DEST" rev-parse --git-dir &>/dev/null 2>&1; then
+  echo "==> tdl already installed at $DEST, pulling latest..."
   git -C "$DEST" pull
 else
   echo "==> Cloning tdl into $DEST..."
