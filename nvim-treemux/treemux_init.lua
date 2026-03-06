@@ -413,3 +413,41 @@ vim.api.nvim_set_hl(0, "NormalFloat",    { bg = "none" })
 vim.api.nvim_set_hl(0, "NvimTreeNormal", { bg = "none" })
 vim.api.nvim_set_hl(0, "NvimTreeNormalNC", { bg = "none" })
 vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { bg = "none" })
+
+-- ============================================================
+-- TREEMUX SELF-HEAL
+-- ============================================================
+-- When the main nvim switches branches (via lazygit or CLI), files that
+-- existed on the old branch may no longer exist on the new one. nvim-tree
+-- holds stale git status for those paths and can crash on the next refresh.
+--
+-- Two autocmds guard against this:
+--
+-- FileChangedShell — fires when nvim detects that a file it has open was
+--   modified/deleted externally (i.e. after a branch switch). We reload
+--   silently (no "press ENTER" prompt) and rebuild the tree.
+--
+-- FileChangedShellPost — fires after the above; ensures the buffer content
+--   is silently reloaded even if the file was deleted (edit! would fail, so
+--   we catch the error with pcall).
+
+vim.api.nvim_create_autocmd("FileChangedShell", {
+  pattern = "*",
+  callback = function()
+    -- Suppress the default "file changed" prompt
+    vim.v.fcs_choice = "reload"
+    -- Rebuild nvim-tree so deleted/renamed files don't cause stale state
+    local ok, nt = pcall(require, "nvim-tree.api")
+    if ok then pcall(nt.tree.reload) end
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileChangedShellPost", {
+  pattern = "*",
+  callback = function()
+    -- Silent reload — handles both modified and deleted files
+    pcall(vim.cmd, "silent! checktime")
+    local ok, nt = pcall(require, "nvim-tree.api")
+    if ok then pcall(nt.tree.reload) end
+  end,
+})

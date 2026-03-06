@@ -4,6 +4,13 @@
 vim.g.mapleader = " "
 
 -- ============================================================
+-- GIT-SYNC COORDINATOR
+-- ============================================================
+-- Central module that refreshes all git-aware components after an external
+-- git operation (branch switch, pull, stash pop). See nvim/sync.lua.
+local sync = require("sync")
+
+-- ============================================================
 -- CHEATSHEET
 -- ============================================================
 -- Opens nvim/cheatsheet.md as a styled read-only welcome buffer.
@@ -566,6 +573,10 @@ require("lazy").setup({
           end
 
           vim.cmd("LazyGit")
+          -- Explicit post-lazygit refresh (belt-and-suspenders alongside
+          -- the TermClose autocmd, in case TermClose fires before the
+          -- terminal buffer is fully torn down).
+          sync.sync()
         end,
         desc = "Open LazyGit",
       },
@@ -801,10 +812,17 @@ vim.api.nvim_create_autocmd("FileType", {
   end,
 })
 
--- Auto-reload files changed outside nvim
+-- Git-sync: refresh all git-aware components when nvim regains focus
+-- or when a terminal buffer (e.g. lazygit float) closes.
 vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHoldI" }, {
   pattern = "*",
-  command = "checktime",
+  callback = function() sync.sync() end,
+})
+
+-- Also fire when a terminal buffer closes (catches lazygit float exit directly)
+vim.api.nvim_create_autocmd("TermClose", {
+  pattern = "*",
+  callback = function() sync.sync() end,
 })
 
 
