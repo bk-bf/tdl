@@ -175,7 +175,17 @@ require("lazy").setup({
           side = "left",
         },
         filters = {
-          custom = { ".git" },
+          -- Read TDL_IGNORE (comma-separated, set by tdl.sh from .tdlignore).
+          -- Falls back to hiding just .git if not running inside tdl.
+          custom = (function()
+            local t = { ".git" }
+            local env = os.getenv("TDL_IGNORE") or ""
+            for entry in env:gmatch("[^,]+") do
+              entry = entry:match("^%s*(.-)%s*$")
+              if entry ~= "" then table.insert(t, entry) end
+            end
+            return t
+          end)(),
           dotfiles = false,
           git_ignored = false,
         },
