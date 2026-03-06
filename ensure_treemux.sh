@@ -18,8 +18,8 @@ TREEMUX_SCRIPTS=~/.config/tmux/plugins/treemux/scripts
 OPENCODE_PCT=28
 
 # ARGS string is stored by sidebar.tmux under @treemux-key-Tab
-ARGS=$(tmux show-option -gqv '@treemux-key-Tab')
-PANE_ID="${TMUX_PANE:-$(tmux display-message -p '#{pane_id}')}"
+ARGS=$(tmux -L tdl show-option -gqv '@treemux-key-Tab')
+PANE_ID="${TMUX_PANE:-$(tmux -L tdl display-message -p '#{pane_id}')}"
 
 if [ -z "$ARGS" ]; then
     # sidebar.tmux hasn't run yet (race at session start); bail out silently
@@ -28,23 +28,23 @@ fi
 
 # Check if sidebar is already registered and the pane actually exists
 sidebar_pane=""
-existing=$(tmux show-option -gqv "@-treemux-registered-pane-$PANE_ID")
+existing=$(tmux -L tdl show-option -gqv "@-treemux-registered-pane-$PANE_ID")
 if [ -n "$existing" ]; then
     sidebar_pane=$(echo "$existing" | cut -d',' -f1)
-    if tmux list-panes -F "#{pane_id}" | grep -q "^${sidebar_pane}$"; then
+    if tmux -L tdl list-panes -F "#{pane_id}" | grep -q "^${sidebar_pane}$"; then
         # Sidebar already open — still enforce layout proportions then exit
         _enforce_layout() {
             local window_width target_cols opencode_pane
-            window_width=$(tmux display-message -p '#{window_width}')
+            window_width=$(tmux -L tdl display-message -p '#{window_width}')
             target_cols=$(awk -v w="$window_width" -v pct="$OPENCODE_PCT" \
                 'BEGIN { printf "%d", int(w * pct / 100 + 0.5) }')
-            opencode_pane=$(tmux list-panes -F "#{pane_id} #{pane_left}" \
+            opencode_pane=$(tmux -L tdl list-panes -F "#{pane_id} #{pane_left}" \
                 | grep -v "^${sidebar_pane} " \
                 | sort -k2 -n \
                 | tail -1 \
                 | cut -d' ' -f1)
             if [ -n "$opencode_pane" ] && [ "$opencode_pane" != "$PANE_ID" ]; then
-                tmux resize-pane -t "$opencode_pane" -x "$target_cols"
+                tmux -L tdl resize-pane -t "$opencode_pane" -x "$target_cols"
             fi
         }
         _enforce_layout
@@ -60,15 +60,15 @@ fi
 
 # Give treemux a moment to register the pane option
 sleep 0.2
-sidebar_pane=$(tmux show-option -gqv "@-treemux-registered-pane-$PANE_ID" \
+sidebar_pane=$(tmux -L tdl show-option -gqv "@-treemux-registered-pane-$PANE_ID" \
     | cut -d',' -f1)
 
-window_width=$(tmux display-message -p '#{window_width}')
+window_width=$(tmux -L tdl display-message -p '#{window_width}')
 target_cols=$(awk -v w="$window_width" -v pct="$OPENCODE_PCT" \
     'BEGIN { printf "%d", int(w * pct / 100 + 0.5) }')
 
 # Rightmost pane that is not the sidebar and not the current (editor) pane
-opencode_pane=$(tmux list-panes -F "#{pane_id} #{pane_left}" \
+opencode_pane=$(tmux -L tdl list-panes -F "#{pane_id} #{pane_left}" \
     | grep -v "^${sidebar_pane} " \
     | grep -v "^${PANE_ID} " \
     | sort -k2 -n \
@@ -76,5 +76,5 @@ opencode_pane=$(tmux list-panes -F "#{pane_id} #{pane_left}" \
     | cut -d' ' -f1)
 
 if [ -n "$opencode_pane" ]; then
-    tmux resize-pane -t "$opencode_pane" -x "$target_cols"
+    tmux -L tdl resize-pane -t "$opencode_pane" -x "$target_cols"
 fi
