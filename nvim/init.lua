@@ -380,6 +380,12 @@ require("lazy").setup({
       { "<leader>tf", "<cmd>NvimTreeFindFile<cr>", desc = "Reveal file in tree" },
     },
     config = function(_, opts)
+      -- Populate filters.custom from .tdlignore before setup
+      local tdlignore = require("tdlignore")
+      local ignore_pats = tdlignore.patterns()
+      opts.filters = opts.filters or {}
+      opts.filters.custom = ignore_pats.raw
+
       opts.on_attach = function(bufnr)
         local api = require("nvim-tree.api")
         -- load all default nvim-tree mappings first
@@ -512,14 +518,22 @@ require("lazy").setup({
     "nvim-telescope/telescope.nvim",
     dependencies = { "nvim-lua/plenary.nvim" },
     opts = {
-      defaults = {
-        file_ignore_patterns = { "^.git/" },
-      },
       pickers = {
         find_files = { hidden = true, no_ignore_vcs = true, follow = true },
         live_grep  = { additional_args = { "--hidden", "--no-ignore-vcs", "--glob", "!**/.git/*" } },
       },
     },
+    config = function(_, opts)
+      -- Merge .tdlignore patterns into defaults.file_ignore_patterns
+      local tdlignore = require("tdlignore")
+      local base = { "^%.git[/\\]" }
+      for _, p in ipairs(tdlignore.patterns().telescope) do
+        table.insert(base, p)
+      end
+      opts.defaults = opts.defaults or {}
+      opts.defaults.file_ignore_patterns = base
+      require("telescope").setup(opts)
+    end,
   },
 
   -- Keymap help popup
@@ -827,6 +841,13 @@ vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter", "CursorHold", "CursorHo
 vim.api.nvim_create_autocmd("TermClose", {
   pattern = "*",
   callback = function() sync.sync() end,
+})
+
+-- Bust tdlignore cache when cwd changes so nvim-tree + Telescope pick up the
+-- correct .tdlignore for the new directory.
+vim.api.nvim_create_autocmd("DirChanged", {
+  pattern = "*",
+  callback = function() require("tdlignore").reset() end,
 })
 
 
