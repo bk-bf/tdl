@@ -57,14 +57,35 @@ echo "==> Bootstrapping nvim-treemux plugins (lazy sync)..."
 NVIM_APPNAME=nvim-treemux nvim --headless "+Lazy! sync" +qa 2>/dev/null || \
   echo "  (headless sync exited non-zero — likely fine on first run, plugins still installed)"
 
-# ── 6. Shell integration reminder ────────────────────────────────────────────
+# ── 6. Shell integration — inject source lines if not already present ────────
+echo "==> Wiring shell integration..."
+
+ALIASES_FILE="$HOME/.config/.aliases"
+TMUX_CONF="$HOME/.config/tmux/.tmux.conf"
+ALIASES_LINE="source $TDL/aliases.sh"
+TMUX_LINE="source-file $TDL/tmux.conf"
+
+if [[ -f "$ALIASES_FILE" ]]; then
+  if grep -qF "$ALIASES_LINE" "$ALIASES_FILE"; then
+    echo "==> $ALIASES_FILE already sources aliases.sh"
+  else
+    printf '\n# tdl IDE layout (treemux | nvim | opencode)\n%s\n' "$ALIASES_LINE" >> "$ALIASES_FILE"
+    echo "==> Added source line to $ALIASES_FILE"
+  fi
+else
+  echo "==> $ALIASES_FILE not found — add manually: $ALIASES_LINE"
+fi
+
+if [[ -f "$TMUX_CONF" ]]; then
+  if grep -qF "$TMUX_LINE" "$TMUX_CONF"; then
+    echo "==> $TMUX_CONF already sources tmux.conf"
+  else
+    printf '\n# tdl IDE layout — treemux plugin config, Tab keybind, session hook\n%s\n' "$TMUX_LINE" >> "$TMUX_CONF"
+    echo "==> Added source-file line to $TMUX_CONF"
+  fi
+else
+  echo "==> $TMUX_CONF not found — add manually: $TMUX_LINE"
+fi
+
 echo ""
-echo "==> Done. Add the following to ~/.config/.aliases (or wherever you source shell config):"
-echo ""
-echo "    source $TDL/aliases.sh"
-echo ""
-echo "    And to ~/.config/tmux/.tmux.conf:"
-echo ""
-echo "    source-file $TDL/tmux.conf"
-echo ""
-echo "    Then reload: tmux source-file ~/.config/tmux/.tmux.conf"
+echo "==> tdl install complete. Reload tmux with: tmux source-file ~/.config/tmux/.tmux.conf"
