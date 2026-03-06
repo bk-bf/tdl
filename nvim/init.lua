@@ -3,6 +3,11 @@
 -- ============================================================
 vim.g.mapleader = " "
 
+-- Disable netrw before any plugin loads — nvim-tree handles all file/dir
+-- browsing; netrw must not hijack directory opens or VimEnter.
+vim.g.loaded_netrw       = 1
+vim.g.loaded_netrwPlugin = 1
+
 -- ============================================================
 -- GIT-SYNC COORDINATOR
 -- ============================================================
@@ -252,10 +257,6 @@ vim.keymap.set("n", "<leader>f", "<cmd>Telescope find_files<cr>", { desc = "Find
 vim.keymap.set("n", "<leader>1", "<cmd>Telescope live_grep<cr>",  { desc = "Search in files" })
 vim.keymap.set("n", "<leader>2", "<cmd>Telescope buffers<cr>",    { desc = "Open buffers" })
 
--- File explorer
--- <leader>e — open netrw file browser (fallback/alternative)
-vim.keymap.set("n", "<leader>e", vim.cmd.Ex, { desc = "File explorer" })
-
 -- Visual mode line movement
 -- J/K in visual mode — move the selected lines down/up, keeping them auto-indented
 vim.keymap.set("v", "J", ":m '>+1<CR>gv=gv", { desc = "Move line down" })
@@ -282,9 +283,13 @@ vim.keymap.set("n", "<leader>u", "<cmd>UndotreeToggle<cr>", { desc = "Undo tree"
 
 -- File reload
 -- <leader>r  — force reload the current file from disk immediately
+-- <leader>R  — reload everything: tmux config, nvim config, git state, sidebar
 vim.keymap.set("n", "<leader>r", function()
   vim.cmd("e!")
 end, { desc = "Reload file" })
+vim.keymap.set("n", "<leader>R", function()
+  require("sync").reload()
+end, { desc = "Reload workspace (tmux + nvim + sidebar)" })
 
 -- Diagnostics
 -- <leader>7/8/9 — diagnostics navigation
@@ -758,10 +763,6 @@ vim.opt.autoread = true
 
 -- Status line: hidden (tmux bar handles global status across panes)
 vim.opt.laststatus = 0
-
--- Netrw: show hidden files by default
-vim.g.netrw_list_hide = ""
-vim.g.netrw_hide = 0
 
 -- ============================================================
 -- APPEARANCE

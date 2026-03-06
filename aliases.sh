@@ -24,7 +24,7 @@ tdl() {
   done
   tmux new-session -d -s "$session" -x "$(tput cols)" -y "$(tput lines)"
   # IDE layout sizes — all pane geometry owned here, not scattered in tmux.conf
-  # sidebar=21, right (opencode)=29% of total width; editor gets the remainder
+  # sidebar=21, right (opencode)=28% of total width; editor gets the remainder
   tmux set-option -t "$session" @treemux-tree-width 21
   sleep 1.5
   local main_pane

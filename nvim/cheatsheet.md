@@ -13,8 +13,8 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  NAVIGATION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   <leader>f        find files              <leader>1        search in files
-  <leader>2        switch open buffers     <leader>e        file explorer (netrw)
-  <leader>t        toggle file tree        <leader>tf       reveal file in tree
+  <leader>2        switch open buffers     <leader>t        toggle file tree
+  <leader>tf       reveal file in tree
 
   <Tab>            next tab                <S-Tab>          prev tab
   <leader>q        close tab               <leader>tb       toggle tab bar
@@ -48,7 +48,8 @@
 
   J / K            move lines down/up (visual)
   <leader>u        undo tree               <leader>r        reload file
-  <C-Space>        trigger completion      <CR>             confirm completion
+  <leader>R        reload workspace        <C-Space>        trigger completion
+  <CR>             confirm completion
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  SESSION  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

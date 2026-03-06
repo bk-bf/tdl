@@ -1,16 +1,21 @@
--- sync.lua — central git-sync coordinator
+-- sync.lua — central git-sync coordinator + full workspace reload
 --
--- Single entry point: require("sync").sync()
--- Refreshes all git-aware components after an external git operation
--- (branch switch, pull, stash pop, etc.) so that nvim and the treemux
--- sidebar never show stale state.
+-- Two entry points:
 --
--- Triggered by:
+--   require("sync").sync()
+--     Lightweight git-state refresh. Safe to call frequently from autocmds.
+--     Refreshes buffers (checktime), gitsigns, nvim-tree, and treemux sidebar.
+--
+--   require("sync").reload()
+--     Full workspace reload triggered manually via <leader>R.
+--     Reloads tmux config, nvim config, then calls sync() for state refresh.
+--
+-- sync() is triggered by:
 --   • FocusGained   — nvim regains focus after any external tool
 --   • TermClose     — lazygit float closes
 --   • explicit call — post vim.cmd("LazyGit") in the <leader>gg keybind
 --
--- Components refreshed:
+-- Components refreshed by sync():
 --   1. nvim buffers    — checktime (reloads files changed on disk)
 --   2. gitsigns        — refresh() (re-reads HEAD, recomputes hunk signs)
 --   3. nvim-tree       — tree.reload() (full tree + git status)
@@ -78,6 +83,25 @@ function M.sync()
 
     -- 4. Refresh treemux sidebar (separate nvim process)
     _refresh_treemux_sidebar()
+  end)
+end
+
+-- Full workspace reload: tmux config → nvim config → git state sync.
+-- Bound to <leader>R in init.lua.
+function M.reload()
+  vim.schedule(function()
+    -- 1. Reload tmux config (runs in background, non-blocking)
+    if vim.env.TMUX and vim.env.TMUX ~= "" then
+      vim.fn.jobstart({ "tmux", "source-file", vim.fn.expand("~/.config/tmux/.tmux.conf") })
+    end
+
+    -- 2. Reload nvim config
+    vim.cmd("silent! source $MYVIMRC")
+
+    -- 3. Refresh git state + buffers + sidebar (reuse existing sync logic)
+    M.sync()
+
+    vim.notify("workspace reloaded", vim.log.levels.INFO)
   end)
 end
 
