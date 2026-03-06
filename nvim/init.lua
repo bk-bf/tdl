@@ -406,7 +406,9 @@ require("lazy").setup({
         function()
           -- Detect git worktrees: if the repo's .git is a file (not a dir),
           -- lazygit's -p flag breaks (it appends /.git/ to the path).
-          -- Set GIT_DIR + GIT_WORK_TREE so lazygit.nvim uses -w/-g instead.
+          -- Set GIT_DIR (worktree-specific, via --git-dir) + GIT_WORK_TREE so
+          -- lazygit sees the correct branch/index. Must NOT use --git-common-dir
+          -- (bare root) — that makes git treat the bare root as work-tree.
           local buf_dir = vim.fn.expand("%:p:h")
           if buf_dir == "" then buf_dir = vim.fn.getcwd() end
 
@@ -427,14 +429,11 @@ require("lazy").setup({
           end
 
           if work_tree then
-            local common = vim.fn.system("git -C " .. vim.fn.shellescape(work_tree) .. " rev-parse --git-common-dir"):gsub("%s+$", "")
+            local git_dir = vim.fn.system("git -C " .. vim.fn.shellescape(work_tree) .. " rev-parse --git-dir"):gsub("%s+$", "")
             if vim.v.shell_error == 0 then
-              -- git-common-dir may be absolute or relative; resolve it properly
-              local git_dir
-              if common:sub(1, 1) == "/" then
-                git_dir = common
-              else
-                git_dir = vim.fn.fnamemodify(work_tree .. "/" .. common, ":p"):gsub("/$", "")
+              -- git-dir may be relative; resolve to absolute
+              if git_dir:sub(1, 1) ~= "/" then
+                git_dir = vim.fn.fnamemodify(work_tree .. "/" .. git_dir, ":p"):gsub("/$", "")
               end
               vim.env.GIT_DIR = git_dir
               vim.env.GIT_WORK_TREE = work_tree
