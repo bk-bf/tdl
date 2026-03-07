@@ -1,5 +1,9 @@
 # Agents.md — AI coding agent reference for aid
 
+## Agent rules
+
+- **Never commit or push to git unprompted.** Always wait for the user to explicitly ask, or for a slash command (e.g. `/commit`) to trigger it.
+
 ## What this repo is
 
 aid is an open-source, terminal-native AI IDE: tmux workspace orchestration + nvim config + persistent Opencode AI pane, all in one repo.
