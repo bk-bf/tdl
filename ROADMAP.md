@@ -3,9 +3,6 @@
 ## Phase 1 — Harden (fix before any promotion)
 
 - [ ] Replace `sleep 1.5` in `aid.sh` with a poll loop — `until tmux -L tdl show-option -gqv @treemux-key-Tab | grep -q .; do sleep 0.1; done` with a timeout escape hatch; current fixed sleep races on slow machines / high-latency SSH
-- [ ] Support non-Arch distros in `install.sh` (apt/brew pynvim path); current install silently breaks on Ubuntu — blocks any community use
-- [ ] Redo `aid` CLI flags — replace bare subcommands (`aid new`) with POSIX-style flags (`aid -n` / `aid --new`); audit all subcommands for consistency
-- [ ] `aid -h` / `aid --help` — inline usage output
 - [ ] Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
 - [ ] Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?)
 
@@ -49,6 +46,7 @@
 - [x] **2026-03**: Fix `status-interval 0` breaking prefix indicator in status bar
 - [x] **2026-03**: Move `sync.lua` → `nvim/lua/sync.lua` (fix `module 'sync' not found`)
 - [x] **2026-03**: Convert `aid()` shell function in `aliases.sh` to standalone `aid.sh` script; symlinked into `~/.local/bin/aid` by `install.sh`; `TDL_DIR` resolved via `realpath "${BASH_SOURCE[0]}"`
+- [x] **2026-03**: POSIX CLI flags — `aid` always launches new session; `-a`/`--attach [name]` to attach; `-l`/`--list`; `-h`/`--help`; unknown flags error with hint; `attach_or_switch` helper handles in-session context; `-d`/`--debug` pre-pass enables `set -x` and `dbg()` step tracing throughout launch sequence
 - [x] **2026-03**: Session routing in `aid.sh` — auto-attach to single session; numbered menu for multiple; `aid ls` / `aid new` / `aid <name>` subcommands
 - [x] **2026-03**: Stable pane IDs — capture `editor_pane_id` and `opencode_pane_id` by `#{pane_id}` immediately after creation; immune to treemux sidebar insertion
 - [x] **2026-03**: Editor pane restart loop — `while true; do rm -f <socket>; nvim --listen <socket>; done`; pane is never a bare shell
