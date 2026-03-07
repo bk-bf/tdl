@@ -1,4 +1,4 @@
-# aid
+# AID
 
 Terminal IDE built on tmux + Neovim + [Opencode](https://opencode.ai). Three persistent panes — file browser, editor, AI assistant — that survive reboots, SSH drops, and branch switches.
 
