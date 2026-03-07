@@ -57,10 +57,10 @@ launch_dir="$PWD"
 # Pick a unique session name from current dir (strip leading dots, replace special chars)
 base=$(basename "$launch_dir" | sed 's/^\.*//' | tr -cs '[:alnum:]-_' '-' | sed 's/-$//')
 [[ -z "$base" ]] && base="dev"
-session="nvim@$base"
+session="aid@$base"
 n=2
 while tmux -L tdl has-session -t "$session" 2>/dev/null; do
-  session="nvim@${base}${n}"
+  session="aid@${base}${n}"
   (( n++ ))
 done
 
