@@ -101,7 +101,13 @@ function M.reload()
     -- 2. Reload nvim config
     vim.cmd("silent! source $MYVIMRC")
 
-    -- 3. Refresh git state + buffers + sidebar (reuse existing sync logic)
+    -- 3. Re-apply aidignore: re-read from disk, re-setup nvim-tree filters,
+    --    restart file watcher. Needed because lazy only runs nvim-tree's config
+    --    function once — source $MYVIMRC alone won't re-run it.
+    local ok_ai, ai = pcall(require, "aidignore")
+    if ok_ai then ai.reset() end
+
+    -- 4. Refresh git state + buffers + sidebar (reuse existing sync logic)
     M.sync()
 
     vim.notify("workspace reloaded", vim.log.levels.INFO)

@@ -21,7 +21,7 @@ aid              # new session in current directory
 aid myproject    # attach to existing session
 ```
 
-Sessions are named `nvim@<dirname>` automatically.
+Sessions are named `aid@<dirname>` automatically.
 
 ## What makes it different
 

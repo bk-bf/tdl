@@ -362,6 +362,8 @@ require("lazy").setup({
         map("<leader>bb", "Bookmark: open", _bm_open_picker)
       end
       require("nvim-tree").setup(opts)
+      -- Start watching .aidignore for live filter updates
+      require("aidignore").watch()
     end,
   },
 
@@ -731,8 +733,8 @@ vim.api.nvim_create_autocmd("TermClose", {
   callback = function() sync.sync() end,
 })
 
--- Bust aidignore cache when cwd changes so nvim-tree + Telescope pick up the
--- correct .aidignore for the new directory.
+-- Bust aidignore cache and restart file watcher when cwd changes so
+-- nvim-tree + Telescope pick up the correct .aidignore for the new directory.
 vim.api.nvim_create_autocmd("DirChanged", {
   pattern = "*",
   callback = function() require("aidignore").reset() end,

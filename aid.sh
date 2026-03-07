@@ -64,7 +64,9 @@ while tmux -L tdl has-session -t "$session" 2>/dev/null; do
   (( n++ ))
 done
 
-# Parse .aidignore (walks up from launch_dir) and build TDL_IGNORE=comma,separated,list
+# Parse .aidignore (walks up from launch_dir) and build TDL_IGNORE=comma,separated,list.
+# If no .aidignore is found anywhere, create an empty one in launch_dir so the
+# file watcher in nvim has a file to watch from the start.
 TDL_IGNORE=""
 _aidignore_file=""
 _dir="$launch_dir"
@@ -77,6 +79,10 @@ for _i in $(seq 1 20); do
   [[ "$_parent" == "$_dir" ]] && break
   _dir="$_parent"
 done
+if [[ -z "$_aidignore_file" ]]; then
+  touch "$launch_dir/.aidignore"
+  _aidignore_file="$launch_dir/.aidignore"
+fi
 if [[ -n "$_aidignore_file" ]]; then
   TDL_IGNORE=$(grep -v '^\s*#' "$_aidignore_file" | grep -v '^\s*$' | paste -sd ',')
 fi
