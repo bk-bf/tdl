@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tdl.sh — main entry point. Symlinked into ~/.local/bin/tdl by install.sh.
+# aid.sh — main entry point. Symlinked into ~/.local/bin/aid by install.sh.
 #
-# Isolation: tdl runs on its own tmux server socket (-L tdl) with its own
+# Isolation: aid runs on its own tmux server socket (-L tdl) with its own
 # config (-f), and launches nvim as NVIM_APPNAME=nvim-tdl so it never
 # touches the user's ~/.config/nvim or existing tmux sessions.
 
@@ -11,14 +11,14 @@ set -euo pipefail
 TDL_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
 # ── Session routing ──────────────────────────────────────────────────────────
-# tdl <name>   → attach to that session directly
-# tdl new      → skip session list, always create a new session
-# tdl          → attach to the only existing session;
+# aid <name>   → attach to that session directly
+# aid new      → skip session list, always create a new session
+# aid          → attach to the only existing session;
 #                if multiple exist, print a list and prompt;
 #                if none exist, create a new one (falls through below)
 
 if [[ "${1:-}" == "ls" ]]; then
-  tmux -L tdl list-sessions 2>/dev/null || echo "no tdl sessions"
+  tmux -L tdl list-sessions 2>/dev/null || echo "no aid sessions"
   exit
 elif [[ "${1:-}" == "new" ]]; then
   shift  # drop "new", fall through to create path
@@ -32,7 +32,7 @@ else
     tmux -L tdl attach -t "${_sessions[0]}"
     exit
   elif [[ ${#_sessions[@]} -gt 1 ]]; then
-    echo "tdl sessions:"
+    echo "aid sessions:"
     for i in "${!_sessions[@]}"; do
       printf "  [%d] %s\n" "$((i+1))" "${_sessions[$i]}"
     done
@@ -82,12 +82,12 @@ if [[ -n "$_tdlignore_file" ]]; then
 fi
 export TDL_IGNORE
 
-# Start the tdl-isolated tmux server with its own config
+# Start the aid-isolated tmux server with its own config
 tmux -L tdl -f "$TDL_DIR/tmux.conf" new-session -d -s "$session" \
   -x "$(tput cols)" -y "$(tput lines)"
 
 # Export TDL_DIR, TDL_IGNORE, and OPENCODE_CONFIG_DIR into the server environment
-# so all panes inherit them. OPENCODE_CONFIG_DIR isolates opencode to tdl's own
+# so all panes inherit them. OPENCODE_CONFIG_DIR isolates opencode to aid's own
 # config dir (commands/, package.json) instead of ~/.config/opencode/.
 tmux -L tdl set-environment -g TDL_DIR "$TDL_DIR"
 tmux -L tdl set-environment -g TDL_IGNORE "$TDL_IGNORE"
@@ -119,7 +119,7 @@ tmux -L tdl send-keys -t "$opencode_pane_id" \
   "OPENCODE_CONFIG_DIR=$(printf '%q' "$TDL_DIR/opencode") opencode $(printf '%q' "$launch_dir")" Enter
 tmux -L tdl select-pane -t "$editor_pane_id"
 
-# Open treemux sidebar: run-shell -t executes inside the tdl server with $TMUX
+# Open treemux sidebar: run-shell -t executes inside the aid server with $TMUX
 # and $TMUX_PANE set, which toggle.sh's bare tmux calls require.
 # Pane IDs are stable — treemux inserting the sidebar won't shift them.
 tmux -L tdl run-shell -t "$editor_pane_id" "$TDL_DIR/ensure_treemux.sh"
@@ -131,7 +131,7 @@ tmux -L tdl run-shell -t "$editor_pane_id" "$TDL_DIR/ensure_treemux.sh"
 #
 # The editor pane runs nvim permanently: when the user quits nvim (:q), the loop
 # restarts it immediately on the same socket. The pane is never a bare shell.
-# To kill the session entirely: close the tmux window or run `tdl kill`.
+# To kill the session entirely: close the tmux window or run `aid kill`.
 tmux -L tdl send-keys -t "$editor_pane_id" \
   "cd $(printf '%q' "$launch_dir") && while true; do rm -f $(printf '%q' "$nvim_socket"); NVIM_APPNAME=nvim-tdl nvim --listen $(printf '%q' "$nvim_socket"); done" Enter
 

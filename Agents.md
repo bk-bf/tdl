@@ -1,26 +1,26 @@
-# Agents.md — AI coding agent reference for tdl
+# Agents.md — AI coding agent reference for aid
 
 ## What this repo is
 
-tdl is an open-source, terminal-native AI IDE: tmux workspace orchestration + nvim config + persistent Opencode AI pane, all in one repo.
+aid is an open-source, terminal-native AI IDE: tmux workspace orchestration + nvim config + persistent Opencode AI pane, all in one repo.
 
 Three persistent panes: file-tree sidebar (left), nvim editor + shell (middle), Opencode AI assistant (right). A single `boot.sh` curl gives a fully working IDE on any machine. No dotfiles repo required.
 
-**Identity**: not a Neovim distribution (like LazyVim) — a *workspace environment* that orchestrates multiple nvim instances and tmux panes. LazyVim configures an editor; tdl builds a workspace around one.
+**Identity**: not a Neovim distribution (like LazyVim) — a *workspace environment* that orchestrates multiple nvim instances and tmux panes. LazyVim configures an editor; aid builds a workspace around one.
 
 ## Repo layout
 
 ```
-tdl/                            ← bare git repo root
+aid/                            ← bare git repo root
 ├── main/                       ← master branch worktree (all code lives here)
 │   ├── boot.sh                 # curl bootstrapper — clones repo then runs install.sh
 │   ├── install.sh              # one-shot setup: TPM, treemux, symlinks, headless nvim bootstrap
-│   ├── aliases.sh              # sourced by ~/.config/.aliases — tdl() launcher, nvim() wrapper
+│   ├── aliases.sh              # sourced by ~/.config/.aliases — aid() launcher, nvim() wrapper
 │   ├── tmux.conf               # loaded via -f on the dedicated tmux server socket
 │   ├── ensure_treemux.sh       # idempotent sidebar opener; symlinked to ~/.config/tmux/ensure_treemux.sh
 │   ├── nvim/
 │   │   ├── init.lua            # main nvim config (plugins, LSP, keymaps, options, autocmds)
-│   │   ├── cheatsheet.md       # styled welcome buffer — opens on fresh tdl launch, <leader>?
+│   │   ├── cheatsheet.md       # styled welcome buffer — opens on fresh aid launch, <leader>?
 │   │   ├── lazy-lock.json      # plugin lockfile
 │   │   └── lua/
 │   │       └── sync.lua        # central git-sync coordinator (see below)
@@ -38,12 +38,12 @@ tdl/                            ← bare git repo root
 
 ## Environment isolation (ADR-006)
 
-tdl is fully isolated from the user's existing nvim and tmux setup. Nothing is shared.
+aid is fully isolated from the user's existing nvim and tmux setup. Nothing is shared.
 
 | Component | Isolation mechanism |
 |---|---|
 | tmux | Dedicated server socket: `tmux -L tdl -f <TDL_DIR>/tmux.conf` |
-| main nvim | `NVIM_APPNAME=nvim-tdl` → config at `~/.config/nvim-tdl → tdl/nvim/` |
+| main nvim | `NVIM_APPNAME=nvim-tdl` → config at `~/.config/nvim-tdl → aid/nvim/` |
 | sidebar nvim | `NVIM_APPNAME=nvim-treemux` → config at `~/.config/nvim-treemux/` |
 | install.sh | Does **not** inject into `~/.config/tmux/.tmux.conf` |
 | aliases.sh | Only injects `source <TDL_DIR>/aliases.sh` into `~/.config/.aliases` |
@@ -64,7 +64,7 @@ tdl is fully isolated from the user's existing nvim and tmux setup. Nothing is s
 
 ## Pane layout and sizes
 
-All pane geometry is owned in `aliases.sh → tdl()`. Nothing in `tmux.conf` sets sizes.
+All pane geometry is owned in `aliases.sh → aid()`. Nothing in `tmux.conf` sets sizes.
 `ensure_treemux.sh` enforces the opencode pane width after the sidebar opens.
 
 | Pane | Width | How set |
@@ -75,8 +75,8 @@ All pane geometry is owned in `aliases.sh → tdl()`. Nothing in `tmux.conf` set
 
 ## Key behaviours
 
-- `tdl` (no args): creates `nvim@<dirname>` session on the `tdl` tmux server; opens `NVIM_APPNAME=nvim-tdl nvim` in middle, opencode in right, treemux sidebar via `ensure_treemux.sh`.
-- `tdl <name>`: attaches to an existing named session on the `tdl` server.
+- `aid` (no args): creates `nvim@<dirname>` session on the `tdl` tmux socket (`tmux -L tdl`); opens `NVIM_APPNAME=nvim-tdl nvim` in middle, opencode in right, treemux sidebar via `ensure_treemux.sh`.
+- `aid <name>`: attaches to an existing named session on the `tdl` tmux socket.
 - On fresh launch (no file arg), nvim opens `cheatsheet.md` as a styled read-only welcome buffer. Opening any file auto-dismisses it. `<leader>?` reopens it.
 - netrw is fully disabled (`loaded_netrw = 1`); nvim-tree handles all file browsing.
 - `showtabline = 2` — bufferline tab bar always visible from launch.
@@ -149,13 +149,13 @@ Central coordination point for post-branch-switch refresh. Prevents stale state 
 ## Repo structure (bare + worktrees)
 
 ```
-tdl/              ← bare git root
+aid/              ← bare git root
 ├── main/         ← master branch (worktree) — all code
 └── docs/         ← dev-docs branch (orphan worktree) — private docs
 ```
 
-`tdl/main/.git` and `tdl/docs/.git` are files (worktree gitdir pointers), not directories.
+`aid/main/.git` and `aid/docs/.git` are files (worktree gitdir pointers), not directories.
 
 The `dev-docs` branch is an orphan — **never merge into master or any code branch**.
 
-For lazygit from inside a worktree: use `git rev-parse --git-dir` (returns `tdl/worktrees/main`), not `--git-common-dir` (returns bare root — causes phantom deleted files).
+For lazygit from inside a worktree: use `git rev-parse --git-dir` (returns `aid/worktrees/main`), not `--git-common-dir` (returns bare root — causes phantom deleted files).

@@ -887,12 +887,12 @@ vim.api.nvim_create_autocmd("VimEnter", {
     local is_empty = data.file == "" and vim.bo[data.buf].buftype == ""
     if (is_file or is_empty) and not vim.o.diff then
       -- Outside tmux: use nvim-tree directly (in tmux, treemux sidebar is
-      -- opened by tdl.sh via run-shell before nvim starts)
+      -- opened by aid.sh via run-shell before nvim starts)
       if not vim.env.TMUX or vim.env.TMUX == "" then
         require("nvim-tree.api").tree.toggle({ focus = false, find_file = true })
       end
     end
-    -- Open cheatsheet when launched with no file (empty buffer = fresh/restarted tdl session)
+    -- Open cheatsheet when launched with no file (empty buffer = fresh/restarted aid session)
     if is_empty and not vim.o.diff then
       vim.schedule(_cs_open)
     end

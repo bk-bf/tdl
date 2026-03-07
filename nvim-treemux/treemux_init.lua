@@ -3,7 +3,7 @@
 vim.env.GIT_CONFIG_GLOBAL = ""
 
 -- Point nvim-tree-remote at the editor nvim's socket.
--- tdl.sh stores the socket path in the tmux server environment as TDL_NVIM_SOCKET
+-- aid.sh stores the socket path in the tmux server environment as TDL_NVIM_SOCKET
 -- (e.g. /tmp/tdl-nvim-nvim@myproject.sock) and the editor nvim is launched with
 -- `nvim --listen <that path>`. Setting this global bypasses the auto-detection in
 -- tmux_current_window_nvim_addr.sh, which only works when the socket filename
@@ -40,7 +40,7 @@ local function nvim_tree_on_attach(bufnr)
 
   -- nvim_tree_remote checks node.type == "file" and falls back to local open for symlinks
   -- (type == "link"). Wrap tabnew to force symlinks through the remote path via absolute_path.
-  -- The editor pane always runs nvim (tdl.sh uses a restart loop), so the socket at
+  -- The editor pane always runs nvim (aid.sh uses a restart loop), so the socket at
   -- TDL_NVIM_SOCKET is always live. The fallback split in nvim_tree_remote is disabled
   -- (pane = nil) so a dead socket produces a clear error instead of a rogue new pane.
   local function tabnew_follow_symlinks()
@@ -187,8 +187,8 @@ require("lazy").setup({
           side = "left",
         },
         filters = {
-          -- Read TDL_IGNORE (comma-separated, set by tdl.sh from .tdlignore).
-          -- Falls back to hiding just .git if not running inside tdl.
+          -- Read TDL_IGNORE (comma-separated, set by aid.sh from .tdlignore).
+          -- Falls back to hiding just .git if not running inside aid.
           custom = (function()
             local t = { ".git" }
             local env = os.getenv("TDL_IGNORE") or ""

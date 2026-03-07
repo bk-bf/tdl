@@ -1,31 +1,31 @@
-# tdl
+# aid
 
 Terminal IDE built on tmux + Neovim + [Opencode](https://opencode.ai). Three persistent panes — file browser, editor, AI assistant — that survive reboots, SSH drops, and branch switches.
 
-![tdl screenshot](screenshot-20260306-234437eRefresheRefresh.png)
+![aid screenshot](screenshot-20260306-234437eRefresheRefresh.png)
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bk-bf/tdl/master/boot.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bk-bf/aid/master/boot.sh | bash
 ```
 
-Installs to `~/.local/share/tdl`. Override: `TDL_DIR=~/tdl curl ...`
+Installs to `~/.local/share/aid`. Override: `TDL_DIR=~/aid curl ...`
 
 Re-running is safe — idempotent.
 
 ## Usage
 
 ```bash
-tdl              # new session in current directory
-tdl myproject    # attach to existing session
+aid              # new session in current directory
+aid myproject    # attach to existing session
 ```
 
 Sessions are named `nvim@<dirname>` automatically.
 
 ## What makes it different
 
-Most Neovim setups configure the editor. tdl orchestrates a full workspace.
+Most Neovim setups configure the editor. aid orchestrates a full workspace.
 
 **Persistent sidebar.** The file browser is a separate, isolated `nvim` instance (`NVIM_APPNAME=nvim-treemux`). It never closes, survives editor restarts, and communicates with the main editor over a Unix socket.
 
