@@ -110,13 +110,12 @@ sleep 1.5
 # Find the initial (only) pane and capture its stable ID before any splits.
 editor_pane_id=$(tmux -L tdl list-panes -t "$session" -F "#{pane_id}" | head -1)
 
-# Split right: opencode occupies 29% of width. Capture its ID immediately.
-tmux -L tdl split-window -h -p 29 -t "$editor_pane_id"
+# Split right: opencode occupies 29% of width, spawned directly into opencode
+# (no shell prompt — avoids zsh intercept, send-keys mangling, autocorrect).
+tmux -L tdl split-window -h -p 29 -t "$editor_pane_id" \
+  "OPENCODE_CONFIG_DIR=$(printf '%q' "$TDL_DIR/opencode") opencode $(printf '%q' "$launch_dir")"
 opencode_pane_id=$(tmux -L tdl list-panes -t "$session" -F "#{pane_id} #{pane_left}" \
   | sort -k2 -n | tail -1 | cut -d' ' -f1)
-
-tmux -L tdl send-keys -t "$opencode_pane_id" \
-  "OPENCODE_CONFIG_DIR=$(printf '%q' "$TDL_DIR/opencode") opencode $(printf '%q' "$launch_dir")" Enter
 tmux -L tdl select-pane -t "$editor_pane_id"
 
 # Open treemux sidebar: run-shell -t executes inside the aid server with $TMUX
@@ -124,15 +123,12 @@ tmux -L tdl select-pane -t "$editor_pane_id"
 # Pane IDs are stable — treemux inserting the sidebar won't shift them.
 tmux -L tdl run-shell -t "$editor_pane_id" "$TDL_DIR/ensure_treemux.sh"
 
-# Send nvim to the editor pane by stable ID — safe even after treemux adds the sidebar.
-# NVIM_APPNAME inline: belt-and-suspenders in case the shell was spawned before
-# set-environment ran (set-environment only affects shells started after the call).
-# --listen: required so treemux can locate and reuse this nvim instance via its socket.
-#
-# The editor pane runs nvim permanently: when the user quits nvim (:q), the loop
-# restarts it immediately on the same socket. The pane is never a bare shell.
+# Respawn the editor pane directly into the nvim restart loop — bypasses the
+# interactive shell entirely so zsh autocorrect / send-keys mangling can't fire.
+# The pane is never a bare shell: when the user quits nvim (:q) the loop
+# immediately restarts it on the same socket.
 # To kill the session entirely: close the tmux window or run `aid kill`.
-tmux -L tdl send-keys -t "$editor_pane_id" \
-  "cd $(printf '%q' "$launch_dir") && while true; do rm -f $(printf '%q' "$nvim_socket"); NVIM_APPNAME=nvim-tdl nvim --listen $(printf '%q' "$nvim_socket"); done" Enter
+tmux -L tdl respawn-pane -k -t "$editor_pane_id" \
+  "cd $(printf '%q' "$launch_dir") && while true; do rm -f $(printf '%q' "$nvim_socket"); NVIM_APPNAME=nvim-tdl nvim --listen $(printf '%q' "$nvim_socket"); done"
 
 tmux -L tdl attach -t "$session"
