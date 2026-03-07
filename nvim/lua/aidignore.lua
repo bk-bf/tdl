@@ -6,7 +6,7 @@
 -- Usage:
 --   local aidignore = require("aidignore")
 --   local pats = aidignore.patterns()
---   -- pats.raw       — plain strings for nvim-tree filters.custom
+--   -- pats.raw       — plain (non-glob) strings, safe for nvim-tree filters.custom
 --   -- pats.telescope — Lua-pattern strings for Telescope file_ignore_patterns
 --
 --   aidignore.watch()   — start watching the current .aidignore (call after setup)
@@ -14,13 +14,46 @@
 
 local M = {}
 
-local _cache    = nil
-local _watcher  = nil   -- active vim.uv fs_event handle
-local _watched  = nil   -- path currently being watched
+local _cache   = nil
+local _watcher = nil  -- active vim.uv fs_event handle
+local _watched = nil  -- path currently being watched
 
--- Escape a plain string for use as a Lua pattern.
-local function _escape(s)
-  return s:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1")
+-- Convert a plain/glob .aidignore line to a Lua pattern for Telescope.
+local function _glob_to_lua(s)
+  local escaped = s:gsub("([%(%)%.%%%+%-%[%^%$])", "%%%1")
+  escaped = escaped:gsub("%*", ".*")
+  escaped = escaped:gsub("%?", ".")
+  return escaped
+end
+
+-- Build pattern tables from a list of raw .aidignore lines.
+--
+-- nvim-tree passes every ignore_list key through vim.fn.match() as a vimscript
+-- regex. Patterns starting with * (e.g. *.pyc, *~) are invalid vimscript and
+-- trigger E33 "no previous atom". Only plain names (no wildcards) are safe.
+--
+-- pats.raw       — plain names only, safe for vim.fn.match / filters.custom
+-- pats.telescope — Lua patterns for all entries (plain + globs), for Telescope
+local function _build(raw)
+  local plain = {}
+  local telescope = {}
+  for _, p in ipairs(raw) do
+    if p ~= "" then
+      -- Only plain names (no * or ?) go to nvim-tree
+      if not p:find("[*?]") then
+        table.insert(plain, p)
+      end
+      -- All entries go to Telescope as Lua patterns
+      local lp = _glob_to_lua(p)
+      if lp ~= "" then
+        table.insert(telescope, "^" .. lp .. "[/\\]")
+        table.insert(telescope, "[/\\]" .. lp .. "[/\\]")
+        table.insert(telescope, "^" .. lp .. "$")
+        table.insert(telescope, "[/\\]" .. lp .. "$")
+      end
+    end
+  end
+  return { raw = plain, telescope = telescope }
 end
 
 -- Walk up from dir, return first .aidignore path found (or nil).
@@ -35,7 +68,7 @@ local function _find_aidignore(dir)
   end
 end
 
--- Read patterns from a file path. Returns list of plain strings.
+-- Read patterns from a file path. Returns list of raw strings.
 local function _read_file(path)
   local raw = {}
   local f = io.open(path, "r")
@@ -48,19 +81,6 @@ local function _read_file(path)
   end
   f:close()
   return raw
-end
-
--- Build pattern tables from a list of plain strings.
-local function _build(raw)
-  local telescope = {}
-  for _, p in ipairs(raw) do
-    local ep = _escape(p)
-    table.insert(telescope, "^" .. ep .. "[/\\]")
-    table.insert(telescope, "[/\\]" .. ep .. "[/\\]")
-    table.insert(telescope, "^" .. ep .. "$")
-    table.insert(telescope, "[/\\]" .. ep .. "$")
-  end
-  return { raw = raw, telescope = telescope }
 end
 
 -- Update live nvim-tree filter state and redraw without calling setup() again.
@@ -89,7 +109,6 @@ local function _apply_to_nvimtree()
 
   local explorer = core.get_explorer()
   if explorer and explorer.filters and explorer.filters.ignore_list then
-    -- Mutate the live Filters instance directly — no setup() re-call needed.
     local pats = M.patterns()
     explorer.filters.ignore_list = {}
     for _, pat in ipairs(pats.raw) do
@@ -107,7 +126,6 @@ end
 function M.patterns()
   if _cache then return _cache end
 
-  -- Read from disk only. If no .aidignore found, no patterns — show everything.
   local path = _find_aidignore(vim.fn.getcwd())
   local raw = path and _read_file(path) or {}
 
@@ -118,7 +136,6 @@ end
 -- Start (or restart) watching the .aidignore closest to cwd.
 -- Called after nvim-tree setup and on DirChanged.
 function M.watch()
-  -- Stop any existing watcher.
   if _watcher then
     pcall(function() _watcher:stop() end)
     _watcher = nil
@@ -133,7 +150,6 @@ function M.watch()
 
   handle:start(path, {}, vim.schedule_wrap(function(err, _, _)
     if err then return end
-    -- Bust cache and re-apply filters.
     _cache = nil
     _apply_to_nvimtree()
   end))
