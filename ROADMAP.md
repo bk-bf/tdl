@@ -2,12 +2,12 @@
 
 ## Near-term
 
-- [ ] Fix `.aidignore` — audit current behaviour; ensure patterns are applied consistently across nvim-tree, Telescope, and the sidebar
 - [ ] Redo `aid` CLI flags — replace bare subcommands (`aid new`) with POSIX-style flags (`aid -n` / `aid --new`); audit all subcommands for consistency
 - [ ] `aid -h` / `aid --help` — inline man page / usage output
 - [ ] Support non-Arch distros in `install.sh` (apt/brew pynvim install)
 - [ ] Add `aid update` command — git pull + re-run `install.sh`
 - [ ] Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
+- [ ] Audit `.aidignore` patterns in Telescope (file_ignore_patterns applied consistently?)
 
 ## Medium-term
 
@@ -22,6 +22,14 @@
 
 ## Done
 
+- [x] **2026-03**: `.aidignore` live reload — `aidignore.lua`: disk-based pattern read, `vim.uv` fs_event watcher, `explorer.filters.ignore_list` mutation, live reload in both nvim instances without `setup()` re-call (see ADR-008)
+- [x] **2026-03**: Sidebar nvim shares `aidignore.lua` via `package.path` — `TDL_DIR/nvim/lua` prepended in `treemux_init.lua`; sidebar calls `aidignore.watch()` after setup (see ADR-009)
+- [x] **2026-03**: Session naming `aid@<dirname>` (was `nvim@<basename>`)
+- [x] **2026-03**: Treemux sidebar width 26 cols (was 21)
+- [x] **2026-03**: Cheatsheet simplified — removed `_cs_apply_style`, `_cs_buf` tracking, 3 autocmds, styling, read-only setup; now just `vim.cmd("edit " .. _cs_path)`
+- [x] **2026-03**: BUG-003 fix — opencode launched via `split-window` direct arg (not `send-keys`); editor pane via `respawn-pane -k` (not `send-keys`); bypasses zsh autocorrect entirely
+- [x] **2026-03**: `sync.lua`: `reload()` now has explicit step 3 (`aidignore.reset()`) before `sync()`; sidebar refresh sends `:lua require('aidignore').reset()` instead of `:NvimTreeRefresh`
+- [x] **2026-03**: `aid.sh` creates empty `.aidignore` in launch dir if none found up the tree (ensures file watcher always has a target)
 - [x] **2026-03**: Fix lazygit `--git-dir` worktree detection (use `--git-dir` not `--git-common-dir`; `--git-common-dir` returns bare root, causing phantom deleted files)
 - [x] **2026-03**: Move nvim config into aid repo (`aid/nvim/`), symlink `~/.config/nvim → aid/nvim/`
 - [x] **2026-03**: Default install path → `~/.local/share/aid` (XDG compliant)

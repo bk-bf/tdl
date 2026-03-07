@@ -52,7 +52,7 @@ aid               → examine existing sessions:
 ```
 aid.sh
   ├── resolve TDL_DIR via realpath
-  ├── session name: nvim@<basename> (deduplicated with numeric suffix)
+  ├── session name: aid@<basename> (deduplicated with numeric suffix)
   ├── parse .aidignore (walks up from launch_dir, up to 20 levels)
   ├── tmux -L tdl -f <TDL_DIR>/tmux.conf new-session -d -s <session>
   ├── set-environment -g:
@@ -64,25 +64,24 @@ aid.sh
   │   (all panes inherit these; must be set before ensure_treemux.sh runs)
   ├── sleep 1.5  (wait for sidebar.tmux to register @treemux-key-Tab)
   ├── capture editor_pane_id (list-panes -F "#{pane_id}" | head -1)
-  ├── split-window -h -p 29 → opencode pane; capture opencode_pane_id
-  ├── send-keys to opencode_pane_id:
-  │       OPENCODE_CONFIG_DIR=<...> opencode <launch_dir>
+  ├── split-window -h -p 29 → spawned directly into opencode process
+  │       (no shell prompt — bypasses zsh autocorrect, no send-keys mangling)
+  │       capture opencode_pane_id
   ├── select-pane editor_pane_id
   ├── run-shell ensure_treemux.sh -t editor_pane_id  (opens sidebar)
-  ├── send-keys to editor_pane_id:
-  │       cd <launch_dir>
-  │       while true; do
+  ├── respawn-pane -k editor_pane_id → nvim restart loop
+  │       cd <launch_dir>; while true; do
   │         rm -f <nvim_socket>
   │         NVIM_APPNAME=nvim-tdl nvim --listen <nvim_socket>
   │       done
+  │       (bypasses interactive shell entirely — zsh autocorrect/send-keys
+  │        mangling cannot fire; pane is never a bare shell)
   └── attach -t <session>
 ```
 
 ### Editor pane restart loop
 
-The editor pane runs nvim inside an infinite `while true` loop. When the user quits nvim (`:q`), the loop immediately restarts it on the same socket path. The pane is **never** a bare shell — the only way to exit is to close the tmux window or run `aid kill`.
-
-`NVIM_APPNAME` is set both in the server environment (`set-environment -g`) and inline in the `send-keys` command (belt-and-suspenders: `set-environment` only affects shells started *after* the call).
+The editor pane is respawned via `respawn-pane -k` directly into the nvim restart loop — bypassing the interactive shell entirely. This means zsh autocorrect and `send-keys` mangling cannot fire. When the user quits nvim (`:q`), the loop immediately restarts it on the same socket path. The pane is **never** a bare shell — the only way to exit is to close the tmux window or run `aid kill`.
 
 ### Stable pane IDs
 
@@ -102,7 +101,7 @@ Set via `tmux -L tdl set-environment -g` before any pane is created. All child s
 
 ## Pane ownership
 
-All pane geometry is owned by `aid.sh`. `tmux.conf` owns only plugin config and keybinds — **never sizes** — with one exception: `@treemux-tree-width 21` must live in `tmux.conf` so treemux reads it before `sidebar.tmux` runs (it cannot be set in `aid.sh` after the sidebar is already open).
+All pane geometry is owned by `aid.sh`. `tmux.conf` owns only plugin config and keybinds — **never sizes** — with one exception: `@treemux-tree-width 26` must live in `tmux.conf` so treemux reads it before `sidebar.tmux` runs (it cannot be set in `aid.sh` after the sidebar is already open).
 
 ## Isolation strategy
 
@@ -140,7 +139,7 @@ The load order within `init.lua` is intentional and must be preserved:
                           (critical: autocmds reading vim.o.number must see
                           the global value, not Neovim's built-in default)
 4. GIT-SYNC require     — local sync = require("sync")
-5. CHEATSHEET           — _cs_open(), _cs_apply_style(), BufEnter autocmds
+5. CHEATSHEET           — _cs_open() (plain edit, no styling/autocmds/buffer tracking)
 6. BOOTSTRAP LAZY       — vim.opt.rtp:prepend(lazypath)
 7. KEYMAPS              — vim.keymap.set() calls (reference sync, _cs_open, etc.)
 8. PLUGINS              — require("lazy").setup({...})
@@ -153,41 +152,7 @@ The `VimEnter` autocmd (opens nvim-tree outside tmux; opens cheatsheet on empty 
 
 ## Cheatsheet system
 
-`nvim/cheatsheet.md` is displayed as a styled read-only welcome buffer when nvim starts with no file argument. It is auto-dismissed when a real file is opened, and auto-restored when the last real file is closed.
-
-### Buffer lifecycle
-
-```
-VimEnter (is_empty=true)
-  └── vim.schedule(_cs_open)
-        └── edit cheatsheet.md → _cs_apply_style()
-              sets: modifiable=false, readonly, buftype=nofile
-              sets window-local: number=false, signcolumn=no, foldcolumn=0
-
-BufEnter (real file opened)
-  └── _cs_buf is valid + entering buf is a readable file
-        → setlocal number signcolumn=yes ... (restore window options)
-        → vim.schedule: nvim_buf_delete(_cs_buf)
-
-BufEnter (empty unnamed buffer — last file was closed)
-  └── bt=="" and name==""
-        → vim.schedule(_cs_open)   [cheatsheet re-appears]
-
-BufWinEnter (any normal file displayed)
-  └── setlocal number signcolumn=yes ...
-      (belt-and-suspenders: ensures gutter options are correct even if
-       BufEnter dismiss fired before filereadable() could verify)
-```
-
-### Window option restoration
-
-When cheatsheet is dismissed, `_cs_apply_style` set window-local overrides (`number=false`, `signcolumn=no`, etc.) that shadow the global `vim.opt.*` values. Restoration uses:
-
-```lua
-vim.cmd("setlocal number relativenumber& signcolumn=yes foldcolumn& statuscolumn& wrap& cursorline&")
-```
-
-The trailing `&` suffix means "inherit from global" for those options. `number` and `signcolumn` are set explicitly to their desired values (not inherited) because the global defaults must be positively asserted.
+`nvim/cheatsheet.md` is opened as a normal file buffer (`vim.cmd("edit " .. path)`) when nvim starts with no file argument. No special read-only styling, no buffer tracking, no window-option autocmds — just a plain `edit`. Re-open at any time with `<leader>?`. Dismissed by opening any other file; no auto-restore logic.
 
 ## Git-sync coordinator (`nvim/lua/sync.lua`)
 
@@ -201,7 +166,10 @@ sync.sync()
   1. silent! checktime          — reload all buffers changed on disk
   2. gitsigns.refresh()         — re-read HEAD, recompute hunk signs + branch name
   3. nvim-tree.api.tree.reload()— full tree rebuild + git status
-  4. tmux -L tdl send-keys → sidebar — :NvimTreeRefresh in the treemux nvim instance
+  4. tmux -L tdl send-keys → sidebar — :lua require('aidignore').reset()
+     mutates explorer.filters.ignore_list in-place then calls api.tree.reload();
+     no setup() re-call, no visual disruption.
+     (see aidignore.lua for private API notes and S2 fallback)
 ```
 
 **`reload()`** — full workspace reload, bound to `<leader>R`:
@@ -209,7 +177,10 @@ sync.sync()
 sync.reload()
   1. tmux -L tdl source-file $TDL_DIR/tmux.conf — hot-reload tmux config
   2. source $MYVIMRC                             — hot-reload nvim config
-  3. sync()                                      — git state + buffers + sidebar
+  3. aidignore.reset()                           — re-read .aidignore from disk,
+                                                   re-apply nvim-tree filters,
+                                                   restart file watcher
+  4. sync()                                      — git state + buffers + sidebar
 ```
 
 Step 4 of `sync()` locates the sidebar pane by reading the tmux server option `@-treemux-registered-pane-$TMUX_PANE`, which `ensure_treemux.sh` writes when it opens the sidebar. It verifies the pane still exists before sending. All tmux calls use `tmux -L tdl` to target the isolated server socket.
@@ -246,6 +217,44 @@ Custom slash commands live in `aid/opencode/commands/`:
 - `udoc.md` — updates `aid/docs/` to reflect recent code changes
 
 `aid/opencode/package.json` declares the project name for the opencode workspace.
+
+## `.aidignore` system (`nvim/lua/aidignore.lua`)
+
+`.aidignore` is a per-project file (one pattern per line, `#` comments, blank lines ignored) that drives file hiding in both nvim-tree and Telescope. `aid.sh` walks up from the launch dir to find the nearest `.aidignore` at startup; if none is found, an empty one is created in the launch dir so the file watcher has a target from day one.
+
+### Module API
+
+```
+aidignore.patterns()  — returns { raw = {...}, telescope = {...} }
+                         raw:       plain strings for nvim-tree filters.custom
+                         telescope: Lua patterns for file_ignore_patterns
+                         result is cached until reset() or watch() fires
+
+aidignore.watch()     — start (or restart) a vim.uv fs_event watcher on the
+                         nearest .aidignore; on change: bust cache + re-apply
+                         Called after nvim-tree setup and on DirChanged.
+
+aidignore.reset()     — bust cache + _apply_to_nvimtree() + restart watch()
+                         Called from DirChanged autocmd and reload().
+```
+
+### Live filter update mechanism (`_apply_to_nvimtree`)
+
+nvim-tree does not expose a public API to change filters without calling `setup()` again. Calling `setup()` re-calls `purge_all_state()` which destroys the window/explorer — unacceptable for live reload.
+
+The solution: mutate `require("nvim-tree.core").get_explorer().filters.ignore_list` in-place, then call `api.tree.reload()`. `ignore_list` is a `table<string, boolean>` read on every `should_filter()` call in nvim-tree's render loop. Mutating it + reloading updates the visible tree with zero visual disruption (no window close/reopen, cursor preserved).
+
+**Stability**: `ignore_list` has existed under this exact name since nvim-tree's multi-instance refactor (PR #2841), with 33 commits to `filters.lua` since then — name unchanged.
+
+**Fallback (S2)**: if `ignore_list` is ever renamed/removed, the fallback is `tmux kill-pane <sidebar_pane_id>` + re-run `ensure_treemux.sh`. ~0.5s visual glitch but fully public API. See comment in `aidignore.lua:84`.
+
+### Sidebar integration
+
+`aidignore.lua` lives in `nvim/lua/`. The sidebar nvim (`nvim-treemux`) is a separate process with its own `package.path`. To allow `require("aidignore")` from `treemux_init.lua`, `aid.sh` exports `TDL_DIR` into the tmux server environment, and `treemux_init.lua` prepends `TDL_DIR/nvim/lua` to `package.path` before any `require()` call.
+
+Note: `rtp` would not work here — nvim's `rtp` expects directories that *contain* a `lua/` subdir, not the `lua/` dir itself. `package.path` is correct.
+
+At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `TDL_IGNORE` env (set by `aid.sh` from `.aidignore` at session start). After `nvim-tree.setup()`, it calls `aidignore.watch()` for live updates. When the main nvim's `sync()` fires (e.g. after a git op), it sends `:lua require('aidignore').reset()` to the sidebar pane — this re-reads `.aidignore` from disk, mutates `ignore_list`, and reloads the tree.
 
 ## Differentiators
 

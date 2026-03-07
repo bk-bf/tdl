@@ -9,13 +9,21 @@
 **Notes**:
 -->
 
+## Closed
+
+### BUG-005: aidignore `setup()` re-call destroyed sidebar
+
+**Status**: closed
+**Repro**: editing `.aidignore` while sidebar is open; sidebar goes completely blank with no tree visible and no error message.
+**Root cause**: the first live-reload attempt called `nvim-tree.setup()` again from the file watcher callback. `setup()` internally calls `purge_all_state()` which tears down the window/explorer — visible as a blank pane.
+**Fix**: mutate `require("nvim-tree.core").get_explorer().filters.ignore_list` (a `table<string, boolean>`) directly in-place, then call `api.tree.reload()`. No `setup()` re-call. The `ignore_list` field is read on every `should_filter()` call in nvim-tree's render loop, so the mutation takes effect on the next reload with zero visual disruption.
+
 ### BUG-003: opencode launch command visible in pane before startup completes
 
-**Status**: open
+**Status**: closed
 **Repro**: launch `aid` from any directory; the opencode pane briefly shows the full `OPENCODE_CONFIG_DIR=... opencode ...` command string before opencode takes over the pane.
-**Notes**: caused by `send-keys` typing the command into a live shell prompt — the command is visible during the shell's startup latency. Fix: pass the command directly to `split-window` as an argument so the pane spawns straight into the process with no intermediate prompt or visible keystrokes.
-
-## Closed
+**Root cause**: `send-keys` typed the command into a live shell prompt — the command was visible during shell startup latency.
+**Fix**: pass the command directly to `split-window` as an argument so the pane spawns straight into the process with no intermediate prompt or visible keystrokes.
 
 ### BUG-004: line numbers and sign column missing after opening a file from cheatsheet
 
