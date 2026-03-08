@@ -4,12 +4,13 @@
 
 - [x] **T-001**: Replace `sleep 1.5` in `aid.sh` with a poll loop — `until tmux -L tdl show-option -gqv @treemux-key-Tab | grep -q .; do sleep 0.1; done` with a timeout escape hatch; current fixed sleep races on slow machines / high-latency SSH
 - [x] **T-002**: Complete `tdl` → `aid` rename across the backend — ~104 token replacements across 7 files in a single coordinated commit; touch points: `TDL_DIR` → `AID_DIR`, `TDL_IGNORE` → `AID_IGNORE`, `TDL_NVIM_SOCKET` → `AID_NVIM_SOCKET`, `tmux -L tdl` → `tmux -L aid`, `NVIM_APPNAME=nvim-tdl` → `nvim-aid`, `~/.config/nvim-tdl` → `~/.config/nvim-aid`, local var `TDL`/`tdl_dir` → `AID`/`aid_dir`, temp session `_tdl_install` → `_aid_install`, socket path `/tmp/tdl-nvim-*` → `/tmp/aid-nvim-*`; files: `aid.sh`, `install.sh`, `boot.sh`, `nvim/init.lua`, `nvim/lua/sync.lua`, `nvim-treemux/treemux_init.lua`, `README.md`
+- [ ] **T-020**: **[DECIDE FIRST] Sidebar architecture** — see ADR-013 (under consideration). Keep treemux (separate tmux pane, second nvim process) or replace with nvim-tree inside main nvim? Decision required before touching T-015, T-016, or T-006: if treemux is removed those items are dissolved; if it stays they are implemented as described. See ADR-013 for full trade-off analysis.
 - [ ] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
 - [ ] **T-004**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?)
 - [ ] **T-013**: Fix BUG-007 — eliminate `~/.config/nvim-tdl` symlink; replace with `XDG_CONFIG_HOME` override at nvim launch time so dotfile-manager git ops can never silently break aid's config (see [bugs/BUG-007.md](bugs/BUG-007.md))
 - [ ] **T-014**: Fix BUG-009 — opencode file edits not visible in nvim until focus switch; add a push-based `checktime` trigger (tmux `pane-focus-in` hook or `vim.uv` fs_event watcher) so buffers reload without requiring manual pane switch (see [bugs/BUG-009.md](bugs/BUG-009.md))
-- [ ] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; add `bufnr()` dedup check in `tabnew_follow_symlinks()` before issuing `tabnew` (see [bugs/BUG-010.md](bugs/BUG-010.md))
-- [ ] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; suppress the Lua `require` notification in the treemux bar and isolate the redraw to the sidebar pane only
+- [ ] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; add `bufnr()` dedup check in `tabnew_follow_symlinks()` before issuing `tabnew` (see [bugs/BUG-010.md](bugs/BUG-010.md)) — **blocked on T-020**
+- [ ] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; suppress the Lua `require` notification in the treemux bar and isolate the redraw to the sidebar pane only — **blocked on T-020**
 
 ## Phase 2 — Differentiate (architectural upgrades)
 
@@ -22,7 +23,7 @@
   - **Scope boundary**: aid wires these plugins together with sensible defaults and pre-configured keymaps. It does not attempt to provide zero-config per-project debugging (virtualenv paths, source maps, attach configs are inherently project-specific and belong in per-project `.nvim.lua` or `launch.json`). The seam aid smooths is "none of these tools are installed or connected" → "they are installed, connected, and have sane keymaps". The remaining per-project tuning is user-land.
   - **Known rough edge**: Python debugging — debugpy installed by mason runs in mason's own venv, not the project venv. Users must point `dap.configurations.python[n].pythonPath` at their project interpreter. Document this prominently rather than attempting a fragile auto-detect.
 
-- [ ] **T-006**: Upgrade sidebar sync to RPC — replace `tmux send-keys :NvimTreeRefresh` with `vim.fn.sockconnect` to sidebar's `$NVIM` socket; current send-keys path silently injects keystrokes if user is typing in the sidebar, risking file corruption
+- [ ] **T-006**: Upgrade sidebar sync to RPC — replace `tmux send-keys :NvimTreeRefresh` with `vim.fn.sockconnect` to sidebar's `$NVIM` socket; current send-keys path silently injects keystrokes if user is typing in the sidebar, risking file corruption — **blocked on T-020**
 - [ ] **T-007**: Self-contained theme system — aid owns its color palette; bufferline, statusbar, treemux, and opencode driven from a single source in the repo (no external theme dependency)
 - [ ] **T-008**: Add `aid update` command — git pull + re-run `install.sh`
 - [ ] **T-017**: Replace `lazygit.nvim` env-var integration with a raw terminal float — build the lazygit command directly (`lazygit -w <work_tree> -g <git_dir>`), never touch `GIT_DIR`/`GIT_WORK_TREE` env vars; eliminates BUG-006 class of env leaks permanently (see [bugs/BUG-006.md](bugs/BUG-006.md))
@@ -38,7 +39,6 @@
 - [ ] **T-012**: Consider `main` + feature-branches workflow (currently single `master`)
 - [ ] **T-018**: Allow `~/.config/opencode/` passthrough — currently `OPENCODE_CONFIG_DIR` is always set to `$AID_DIR/opencode`, which means users cannot carry their existing opencode config (custom models, API keys stored in opencode's config, etc.) into an aid session. A flag or env var to opt out of the override would remove this friction for users who already have an opencode setup they're happy with. Deferred until the scope of config merging is clearer.
 - [ ] **T-019**: User nvim/tmux override layer — a structured insertion point (e.g. `~/.config/aid/nvim/lua/user.lua` required last in `init.lua`) that lets users extend aid's config without forking the repo. Currently deferred because the scope of safely composing arbitrary user configs with aid's own plugin load order, keybinds, and autocmds is undefined. See ADR-012.
-- [ ] **T-020**: **[RFC] Replace treemux separate-pane sidebar with nvim-tree inside main nvim** — see ADR-013 (under consideration). The key question: does the sidebar-survives-`:q` property justify the treemux complexity, given that `:q` in aid already restarts nvim via the restart loop? If decided yes to removal: delete `nvim-treemux/`, `ensure_treemux.sh`; strip TPM/treemux from `tmux.conf`; remove `AID_NVIM_SOCKET` and treemux poll from `aid.sh`; remove treemux symlink from `install.sh`; lift `not vim.env.TMUX` guard in VimEnter autocmd. Would dissolve BUG-008 (T-016), BUG-010 (T-015), and T-006 entirely.
 
 ## Done
 
