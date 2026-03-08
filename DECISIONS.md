@@ -33,10 +33,10 @@ Architecture decision records — why things are the way they are.
 **Date**: 2026-03
 **Decision**: aid must not conflict with the user's existing nvim or tmux setup. All runtime state is isolated:
 - tmux: dedicated server socket `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses all user tmux configs
-- nvim: `XDG_CONFIG_HOME=$HOME/.config/aid` set in the tmux server environment; `NVIM_APPNAME=nvim` resolves to `~/.config/aid/nvim`. `~/.config/nvim` is never touched. (`NVIM_APPNAME=treemux` and `~/.config/aid/treemux` existed while treemux was in use; removed by T-020 per ADR-013.)
+- nvim: `XDG_CONFIG_HOME=$HOME/.config/aid` set in the tmux server environment; `NVIM_APPNAME=nvim` (main) and `NVIM_APPNAME=treemux` (sidebar) resolve to `~/.config/aid/nvim` and `~/.config/aid/treemux` respectively. `~/.config/nvim` is never touched.
 - opencode: `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` — config reads from inside the repo, not `~/.config/opencode/`
 - install.sh: does not inject into any user config file; `aid` is symlinked into `~/.local/bin/aid` — the only mutation to the user's environment
-- All scripts (`sync.lua`): use `tmux -L aid` for every tmux command
+- All scripts (`ensure_treemux.sh`, `sync.lua`): use `tmux -L aid` for every tmux command
 
 **Reason**: The previous model (symlink `~/.config/nvim → aid/nvim/`, source `aid/tmux.conf` from user's tmux config) overwrote the user's nvim config and polluted their tmux config. A new machine install of aid should be truly zero-conflict — users who already have an nvim config or complex tmux config must be able to install and run aid without any breakage to their existing environment.
 
@@ -69,8 +69,6 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 ## ADR-008: `.aidignore` live reload via `explorer.filters.ignore_list` mutation
 
 **Date**: 2026-03
-**Note**: The S2 fallback documented below ("kill treemux pane + re-run `ensure_treemux.sh`") is obsolete pending T-020 (ADR-013). Once treemux is removed the S2 fallback simply becomes "no fallback needed — same process, no cross-process state to resync".
-
 **Decision**: Live-updating nvim-tree filters when `.aidignore` changes is done by mutating `require("nvim-tree.core").get_explorer().filters.ignore_list` in-place, then calling `api.tree.reload()`. No `setup()` re-call.
 
 **Reason**: `nvim-tree.setup()` is not safe to call on a live tree — it calls `purge_all_state()` internally, which destroys the window/explorer (visible as a blank pane). The `ignore_list` field is a `table<string, boolean>` read on every `should_filter()` invocation inside nvim-tree's render loop. Mutating it in-place causes the next `reload()` to use the updated patterns with zero visual disruption — no window close/reopen, cursor preserved.
@@ -88,8 +86,6 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 ## ADR-009: Shared `package.path` for sidebar nvim via `AID_DIR/nvim/lua`
 
 **Date**: 2026-03
-**Status**: SUPERSEDED by ADR-013. Once T-020 is implemented, the sidebar nvim process no longer exists and this mechanism is deleted. Kept for historical record.
-
 **Decision**: `treemux_init.lua` prepends `AID_DIR/nvim/lua` to `package.path` at the top of the file, before any `require()`. This allows `require("aidignore")` (and other main-nvim modules) to work in the sidebar nvim without duplicating code.
 
 **Reason**: The sidebar nvim (`NVIM_APPNAME=treemux`) is an isolated process with its own config directory. Shared Lua modules like `aidignore.lua` live in `nvim/lua/` under the main nvim config. Without the `package.path` addition, `require("aidignore")` in `treemux_init.lua` fails with `module not found`.
@@ -126,59 +122,6 @@ The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim c
 **Alternatives rejected**:
 - `NVIM_APPNAME=aid` + `NVIM_APPNAME=aid-treemux`: gives `~/.config/aid` (main) but `~/.config/aid-treemux` (sidebar) — not truly nested.
 - Pass `--cmd "set rtp+=..."` to nvim directly: requires rebuilding nvim's entire runtimepath resolution, fragile across nvim versions.
-
----
-
-## ADR-013: Replace treemux separate-pane sidebar with nvim-tree inside main nvim
-
-**Date**: 2026-03
-**Status**: DECIDED — not yet implemented (tracked as T-020)
-
-**Decision**: Remove the treemux architecture (separate tmux pane running a second nvim process) and run nvim-tree directly inside the main nvim instance. The sidebar becomes a native nvim window split, not a cross-process tmux pane.
-
-**What is removed**:
-- `nvim-treemux/` directory (`treemux_init.lua`, `watch_and_update.sh`)
-- `ensure_treemux.sh`
-- TPM and `kiyoon/treemux` plugin from `tmux.conf`
-- `~/.config/aid/treemux` symlink from `install.sh`
-- `AID_NVIM_SOCKET` wiring in `aid.sh`
-- The treemux plugin init poll loop in `aid.sh`
-- The `run-shell ensure_treemux.sh` call in `aid.sh`
-- `NVIM_APPNAME=treemux` (no second nvim process)
-- All `@treemux-*` tmux options
-
-**What changes**:
-- `aid.sh`: remove socket var, treemux poll, and `ensure_treemux.sh` call; layout becomes two panes (editor | opencode)
-- `init.lua` VimEnter autocmd: remove the `not vim.env.TMUX` guard so nvim-tree opens unconditionally on session start
-- `install.sh`: remove treemux symlink
-- `tmux.conf`: remove TPM, treemux plugin, `@treemux-*` options, Tab keybind for sidebar toggle
-
-**What stays unchanged**:
-- nvim-tree itself (already in main nvim, already configured)
-- Cheatsheet-on-empty-buffer behaviour
-- Editor nvim restart loop (`:q` protection)
-- `aidignore` integration (already in main nvim — trivially simpler now)
-- bufferline, all keybinds, all other plugins
-
-**Rationale**:
-
-The original justification for a separate pane was: "the sidebar survives `:q` of the editor nvim". In practice this property is irrelevant because `aid.sh` runs the editor pane inside a `while true` restart loop — `:q` immediately relaunches nvim. The sidebar was never protecting against a real user-visible failure mode.
-
-The cost of the separate-pane architecture is large: a second full lazy.nvim plugin stack, a `package.path` hack to share `aidignore.lua` across processes (ADR-009), cross-process RPC via `AID_NVIM_SOCKET` for file opens (`nvim-tree-remote`), a 1-second polling loop (`watch_and_update.sh`) for directory sync, TPM dependency, `ensure_treemux.sh` layout enforcement, and a known XDG_CONFIG_HOME restart requirement when treemux config changes (the bug that triggered this review).
-
-nvim-tree is already fully configured in the main nvim (`init.lua:322`). It already opens on VimEnter outside tmux. Moving it inside main nvim requires removing the `not vim.env.TMUX` guard and deleting the treemux infrastructure — nothing new to build.
-
-**The `:q` concern addressed**: If the user somehow closes nvim-tree (e.g. `<leader>t` toggle), the tree can be re-opened with `<leader>t`. The `VimEnter` autocmd reopens it on nvim restart. `persistence.nvim` (already in the plugin list) restores the tree state across sessions. The restart loop means nvim never exits permanently, so tree state loss is always transient.
-
-**Bugs dissolved by this decision**:
-- BUG-010 (T-015): duplicate tab on sidebar file open — `tabnew_follow_symlinks` cross-process RPC is the source; gone
-- BUG-008 (T-016): treemux bottom bar flicker + line number bleed on `.aidignore` reset — sidebar pane is gone; gone
-- T-006 (Phase 2): sidebar RPC upgrade — entire cross-process sync path is gone; cancelled
-
-**ADRs superseded/updated**:
-- ADR-006: update — remove `NVIM_APPNAME=treemux` and `~/.config/aid/treemux` from isolation description
-- ADR-008: update — S2 fallback ("kill treemux pane + re-run ensure_treemux.sh") is obsolete
-- ADR-009: superseded — `package.path` sharing exists only because of the separate process; gone
 
 ---
 
