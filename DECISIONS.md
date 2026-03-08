@@ -13,50 +13,41 @@ Archived ADRs (superseded and no longer referenced by active work) are in `archi
 
 ## Under Consideration
 
----
-
-### ADR-013: Sidebar architecture — treemux separate pane vs. nvim-tree inside main nvim
-
-**Date**: 2026-03
-**Status**: Under consideration — no decision made (blocks T-020, T-015, T-016, T-006)
-
-**The question**: Should the file tree sidebar remain a separate tmux pane running its own nvim process (treemux), or be moved inside the main nvim instance as a native window split?
-
-**Current architecture (treemux)**:
-- `kiyoon/treemux` TPM plugin manages a persistent tmux pane running a second nvim process
-- `nvim-treemux/treemux_init.lua` — full nvim config for the sidebar process (own lazy.nvim, own plugins: nvim-tree, nvim-tree-remote, tmux-send.nvim)
-- `nvim-treemux/watch_and_update.sh` — polls editor pane cwd every second, calls `change_root` on sidebar nvim when directory changes
-- `ensure_treemux.sh` — opens the sidebar pane if not open, enforces 3-pane layout proportions
-- `AID_NVIM_SOCKET` — cross-process RPC: clicking a file in the sidebar sends it to the editor nvim
-- `package.path` hack in `treemux_init.lua` to share `aidignore.lua` across processes (see ADR-009)
-
-**Cost of current architecture**:
-- Second full nvim process with its own plugin stack and lazy.nvim instance
-- `watch_and_update.sh` polling loop (1 s interval)
-- `ensure_treemux.sh` layout enforcement
-- TPM dependency
-- `AID_NVIM_SOCKET` wiring (`aid.sh` must set socket path before treemux starts)
-- `package.path` hack to share Lua modules across processes
-- `XDG_CONFIG_HOME` + `NVIM_APPNAME=treemux` complexity (caused a restart-required bug in this session)
-- `~/.config/tmux/plugins/treemux/` dependency
-- Active bugs: BUG-008 (T-016), BUG-010 (T-015); active Phase 2 work item T-006
-
-**What moving inside main nvim would give**:
-- Delete `nvim-treemux/`, `ensure_treemux.sh`, socket wiring, poll loop, TPM/treemux plugin
-- nvim-tree is already fully configured in `init.lua` — already opens on VimEnter outside tmux; the only change needed is lifting the `not vim.env.TMUX` guard
-- `aidignore` integration trivially simpler — same process, no `package.path` hack
-- Layout: two panes (editor | opencode) instead of three
-- BUG-008, BUG-010, T-006 dissolved entirely
-
-**The stated benefit of separate pane — sidebar survives `:q`**:
-The editor pane runs inside a `while true` restart loop (`aid.sh:222–224`). `:q` immediately relaunches nvim. The sidebar in a separate pane is therefore not protecting against a real failure mode — nvim never exits permanently.
-
-**Remaining concern to resolve before deciding**:
-The design is deliberate: the user cannot quit out of nvim to a bare shell. The tmux pane always contains nvim. If nvim-tree is a split inside that nvim, a user could close it with `q` or `:q` on the tree buffer. In the current treemux setup, the sidebar pane is immune to any nvim keybind. The question is whether this tmux-level isolation of the sidebar matters in practice, or whether `<leader>t` re-opening the tree (plus the VimEnter autocmd on restart) is sufficient.
+*(none)*
 
 ---
 
 ## Made
+
+---
+
+### ADR-013: Sidebar architecture — nvim-tree inside main nvim (treemux removed)
+
+**Date**: 2026-03
+**Status**: Made
+
+**Decision**: Remove treemux. The file tree sidebar runs as a native nvim-tree split inside the main nvim instance. The layout is two tmux panes: editor (nvim, with nvim-tree split) | opencode.
+
+**What was removed**:
+- `nvim-treemux/` directory (`treemux_init.lua`, `watch_and_update.sh`, `lazy-lock.json`)
+- `ensure_treemux.sh`
+- `AID_NVIM_SOCKET` env var and socket wiring in `aid.sh`
+- Treemux poll loop in `aid.sh` (`@treemux-key-Tab` wait)
+- `@treemux-tree-width`, `@treemux-tree-client`, `@treemux-tree-nvim-init-file`, `@treemux-nvim-command`, `@treemux-python-command` options in `tmux.conf`
+- TPM + treemux plugin lines in `tmux.conf`
+- `NVIM_APPNAME=treemux` and `XDG_CONFIG_HOME` sidebar references
+- `not vim.env.TMUX` guard on VimEnter nvim-tree autocmd in `init.lua`
+
+**What replaces it**:
+- nvim-tree was already fully configured in `init.lua` (lines 322–370) and already opened on VimEnter outside tmux; the guard was the only thing suppressing it inside tmux sessions
+- `<leader>t` toggles the tree; VimEnter autocmd reopens it on nvim restart
+- `aidignore` live reload works trivially — same process, no `package.path` hack needed
+- Layout correction (`ensure_treemux.sh`) is gone — two-pane layout needs no correction
+
+**Reason**: The treemux architecture accrued structural debt (second lazy.nvim stack, 1 s poll loop, cross-process RPC, `package.path` hack, TPM dependency) without delivering a meaningful benefit. The "sidebar survives `:q`" argument was moot because the editor pane runs in a `while true` restart loop — nvim never exits permanently. Bugs BUG-008 and BUG-010, and work item T-006, are dissolved by this change. The user experience is equivalent or better: `<leader>t` gives a toggle that treemux never provided.
+
+**ADR-009 note**: ADR-009 (shared `package.path` for sidebar nvim) is now obsolete — kept for historical record.
+**ADR-006 note**: ADR-006 reference to `NVIM_APPNAME=treemux` is now historical — the isolation model is preserved for main nvim; the treemux variant is gone.
 
 ---
 

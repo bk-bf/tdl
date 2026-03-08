@@ -5,12 +5,11 @@
 - [x] **T-001**: Replace `sleep 1.5` in `aid.sh` with a poll loop — `until tmux -L tdl show-option -gqv @treemux-key-Tab | grep -q .; do sleep 0.1; done` with a timeout escape hatch; current fixed sleep races on slow machines / high-latency SSH
 - [x] **T-002**: Complete `tdl` → `aid` rename across the backend — ~104 token replacements across 7 files in a single coordinated commit; touch points: `TDL_DIR` → `AID_DIR`, `TDL_IGNORE` → `AID_IGNORE`, `TDL_NVIM_SOCKET` → `AID_NVIM_SOCKET`, `tmux -L tdl` → `tmux -L aid`, `NVIM_APPNAME=nvim-tdl` → `nvim-aid`, `~/.config/nvim-tdl` → `~/.config/nvim-aid`, local var `TDL`/`tdl_dir` → `AID`/`aid_dir`, temp session `_tdl_install` → `_aid_install`, socket path `/tmp/tdl-nvim-*` → `/tmp/aid-nvim-*`; files: `aid.sh`, `install.sh`, `boot.sh`, `nvim/init.lua`, `nvim/lua/sync.lua`, `nvim-treemux/treemux_init.lua`, `README.md`
 - [ ] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
-- [ ] **T-004**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?)
+- [-] **T-004**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?) — audit complete; revealed BUG-011 (Telescope patterns frozen at startup, not live-updated); fix tracked as T-021
+- [x] **T-021**: Fix BUG-011 — `.aidignore` changes not reflected in Telescope until nvim restart; add `_apply_to_telescope()` to `aidignore.lua` (mutates `require("telescope.config").values.file_ignore_patterns` in-place) and call it from all existing update paths; remove duplicate pattern-building from Telescope's `config` block in `init.lua` (see [bugs/BUG-011.md](bugs/BUG-011.md))
 - [ ] **T-013**: Fix BUG-007 — eliminate `~/.config/nvim-tdl` symlink; replace with `XDG_CONFIG_HOME` override at nvim launch time so dotfile-manager git ops can never silently break aid's config (see [bugs/BUG-007.md](bugs/BUG-007.md))
 - [ ] **T-014**: Fix BUG-009 — opencode file edits not visible in nvim until focus switch; add a push-based `checktime` trigger (tmux `pane-focus-in` hook or `vim.uv` fs_event watcher) so buffers reload without requiring manual pane switch (see [bugs/BUG-009.md](bugs/BUG-009.md))
-- [ ] **T-020**: **[DECIDE FIRST] Sidebar architecture** — see ADR-013 (under consideration). Keep treemux (separate tmux pane, second nvim process) or replace with nvim-tree inside main nvim? Decision required before touching T-015, T-016, or T-006: if treemux is removed those items are dissolved; if it stays they are implemented as described. See ADR-013 for full trade-off analysis.
-- [ ] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; add `bufnr()` dedup check in `tabnew_follow_symlinks()` before issuing `tabnew` (see [bugs/BUG-010.md](bugs/BUG-010.md)) — **blocked on T-020**
-- [ ] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; suppress the Lua `require` notification in the treemux bar and isolate the redraw to the sidebar pane only — **blocked on T-020**
+- [x] **T-020**: Sidebar architecture decision — see ADR-013. Decided: treemux removed; nvim-tree runs inside main nvim. T-015, T-016, T-006 dissolved (treemux-specific bugs/work gone with the infrastructure).
 
 ## Phase 2 — Differentiate (architectural upgrades)
 
@@ -23,7 +22,7 @@
   - **Scope boundary**: aid wires these plugins together with sensible defaults and pre-configured keymaps. It does not attempt to provide zero-config per-project debugging (virtualenv paths, source maps, attach configs are inherently project-specific and belong in per-project `.nvim.lua` or `launch.json`). The seam aid smooths is "none of these tools are installed or connected" → "they are installed, connected, and have sane keymaps". The remaining per-project tuning is user-land.
   - **Known rough edge**: Python debugging — debugpy installed by mason runs in mason's own venv, not the project venv. Users must point `dap.configurations.python[n].pythonPath` at their project interpreter. Document this prominently rather than attempting a fragile auto-detect.
 
-- [ ] **T-006**: Upgrade sidebar sync to RPC — replace `tmux send-keys :NvimTreeRefresh` with `vim.fn.sockconnect` to sidebar's `$NVIM` socket; current send-keys path silently injects keystrokes if user is typing in the sidebar, risking file corruption — **blocked on T-020**
+- [ ] **T-006**: ~~Upgrade sidebar sync to RPC~~ — **dissolved by T-020** (treemux removed; no cross-process RPC exists anymore)
 - [ ] **T-007**: Self-contained theme system — aid owns its color palette; bufferline, statusbar, treemux, and opencode driven from a single source in the repo (no external theme dependency)
 - [ ] **T-008**: Add `aid update` command — git pull + re-run `install.sh`
 - [ ] **T-017**: Replace `lazygit.nvim` env-var integration with a raw terminal float — build the lazygit command directly (`lazygit -w <work_tree> -g <git_dir>`), never touch `GIT_DIR`/`GIT_WORK_TREE` env vars; eliminates BUG-006 class of env leaks permanently (see [bugs/BUG-006.md](bugs/BUG-006.md))
@@ -42,7 +41,7 @@
 
 ## Done
 
-- [x] **2026-03**: Fix GIT_DIR env leak after lazygit closes (BUG-006) — clear `vim.env.GIT_DIR/GIT_WORK_TREE` immediately after `vim.cmd("LazyGit")` so gitsigns re-attaches cleanly on `gs.refresh()` and statusline git info is not lost
+- [x] **2026-03**: T-020 / ADR-013 — remove treemux; nvim-tree inside main nvim; two-pane layout (editor | opencode); `ensure_treemux.sh`, `nvim-treemux/`, `AID_NVIM_SOCKET`, TPM/treemux plugin all deleted; BUG-008 (T-016), BUG-010 (T-015), T-006 dissolved — clear `vim.env.GIT_DIR/GIT_WORK_TREE` immediately after `vim.cmd("LazyGit")` so gitsigns re-attaches cleanly on `gs.refresh()` and statusline git info is not lost
 - [x] **2026-03**: Fix lazygit `--git-dir` worktree detection (final): `find_git_root()` handles both worktree (`.git` file) and normal repo (`.git` dir); `cwd` fallback; always sets `GIT_DIR`+`GIT_WORK_TREE` so lazygit context tracks the open buffer's worktree — push and branch ops work correctly from any worktree
 - [x] **2026-03**: `.aidignore` live reload — `aidignore.lua`: disk-based pattern read, `vim.uv` fs_event watcher, `explorer.filters.ignore_list` mutation, live reload in both nvim instances without `setup()` re-call (see ADR-008)
 - [x] **2026-03**: Sidebar nvim shares `aidignore.lua` via `package.path` — `TDL_DIR/nvim/lua` prepended in `treemux_init.lua`; sidebar calls `aidignore.watch()` after setup (see ADR-009)

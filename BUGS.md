@@ -47,4 +47,8 @@
 
 **Status**: closed — final solution tracked as T-017 — see [bugs/BUG-006.md](bugs/BUG-006.md)
 
+### BUG-011: `.aidignore` changes not reflected in Telescope until nvim restart
+
+**Status**: closed — T-021 — see [bugs/BUG-011.md](bugs/BUG-011.md)
+
 *(BUG-005, BUG-001, BUG-002 moved to [archive/BUGS-2026-03.md](archive/BUGS-2026-03.md))*
