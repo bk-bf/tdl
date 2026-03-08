@@ -38,6 +38,7 @@
 - [ ] **T-012**: Consider `main` + feature-branches workflow (currently single `master`)
 - [ ] **T-018**: Allow `~/.config/opencode/` passthrough — currently `OPENCODE_CONFIG_DIR` is always set to `$AID_DIR/opencode`, which means users cannot carry their existing opencode config (custom models, API keys stored in opencode's config, etc.) into an aid session. A flag or env var to opt out of the override would remove this friction for users who already have an opencode setup they're happy with. Deferred until the scope of config merging is clearer.
 - [ ] **T-019**: User nvim/tmux override layer — a structured insertion point (e.g. `~/.config/aid/nvim/lua/user.lua` required last in `init.lua`) that lets users extend aid's config without forking the repo. Currently deferred because the scope of safely composing arbitrary user configs with aid's own plugin load order, keybinds, and autocmds is undefined. See ADR-012.
+- [ ] **T-020**: **[RFC] Replace treemux separate-pane sidebar with nvim-tree inside main nvim** — see ADR-013 (under consideration). The key question: does the sidebar-survives-`:q` property justify the treemux complexity, given that `:q` in aid already restarts nvim via the restart loop? If decided yes to removal: delete `nvim-treemux/`, `ensure_treemux.sh`; strip TPM/treemux from `tmux.conf`; remove `AID_NVIM_SOCKET` and treemux poll from `aid.sh`; remove treemux symlink from `install.sh`; lift `not vim.env.TMUX` guard in VimEnter autocmd. Would dissolve BUG-008 (T-016), BUG-010 (T-015), and T-006 entirely.
 
 ## Done
 
