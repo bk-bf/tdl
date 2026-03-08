@@ -3,6 +3,7 @@
 ## Phase 1 — Harden (fix before any promotion)
 
 - [ ] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
+- [ ] **BUG-014**: `<Tab>` in treemux sidebar opens file inside sidebar pane instead of editor pane; fix: unmap `<Tab>` in `treemux_init.lua` after plugin setup (see [bugs/BUG-014.md](bugs/BUG-014.md))
 
 ## Phase 2 — Differentiate (architectural upgrades)
 

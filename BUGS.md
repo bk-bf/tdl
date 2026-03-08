@@ -8,6 +8,12 @@
 **Repro**: open enough tabs that bufferline overflows the available width; a `[+N]` count appears at the right edge of the tab bar indicating how many tabs are off-screen.
 **Notes**: `left_trunc_marker`/`right_trunc_marker` options control the arrow icon only — the count is hardcoded in `get_trunc_marker()` in `bufferline/ui.lua` and always renders when `count > 0`. No public option suppresses it. Per PHILOSOPHY.md §"Fixing seams that aid didn't create" — this exists regardless of aid being installed; the fix belongs upstream. Report to [akinsho/bufferline.nvim](https://github.com/akinsho/bufferline.nvim) requesting a `show_trunc_marker` / `show_trunc_count` option.
 
+### BUG-014: pressing Tab in treemux sidebar opens file inside sidebar pane
+
+**Status**: open
+**Repro**: focus the treemux sidebar pane; press `<Tab>`; a file buffer opens inside the sidebar pane instead of the main editor pane.
+**Notes**: `<Tab>` → `BufferLineCycleNext` is active in the sidebar's nvim instance because it loads the full plugin set via lazy. Fix: unmap `<Tab>` in `treemux_init.lua` after setup. See [bugs/BUG-014.md](bugs/BUG-014.md).
+
 <!-- template:
 ### BUG-N: title
 **Status**: open | investigating | blocked
