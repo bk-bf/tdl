@@ -10,7 +10,7 @@
 - [x] **T-013**: Fix BUG-007 — eliminate `~/.config/nvim-tdl` symlink; replace with `XDG_CONFIG_HOME` override at nvim launch time so dotfile-manager git ops can never silently break aid's config (see [bugs/BUG-007.md](bugs/BUG-007.md))
 - [x] **T-014**: Fix BUG-009 — opencode file edits not visible in nvim until focus switch; `pane-focus-in` hook in `tmux.conf` pushes `checktime` into `AID_NVIM_SOCKET` on every pane switch (see [bugs/BUG-009.md](bugs/BUG-009.md))
 - [x] **T-020**: Sidebar architecture decision — ADR-013 made: treemux stays (see ADR-013)
-- [ ] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; add `bufnr()` dedup check in `tabnew_follow_symlinks()` before issuing `tabnew` (see [bugs/BUG-010.md](bugs/BUG-010.md))
+- [x] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; `_remote_bufnr()` dedup check added to both `tabnew_follow_symlinks()` (nvim-tree) and the neo-tree `file_open_requested` handler; helper promoted to module scope so both paths share it (see [bugs/BUG-010.md](bugs/BUG-010.md))
 - [ ] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; suppress the Lua `require` notification in the treemux bar and isolate the redraw to the sidebar pane only
 
 ## Phase 2 — Differentiate (architectural upgrades)

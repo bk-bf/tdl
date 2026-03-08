@@ -10,7 +10,7 @@
 
 ### BUG-010: opening an already-open file creates a duplicate tab
 
-**Status**: open — **Roadmap**: T-015 — see [bugs/BUG-010.md](bugs/BUG-010.md)
+**Status**: closed — fixed in T-015 — see [bugs/BUG-010.md](bugs/BUG-010.md)
 
 <!-- template:
 ### BUG-N: title
