@@ -96,12 +96,17 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 ---
 
-## ADR-010: `tmux.conf` keybinds — aid-essential only; no opinionated nav bindings
+## ADR-010: `tmux.conf` default keybinds
 
 **Date**: 2026-03
-**Decision**: `aid/tmux.conf` defines only the keybinds that aid itself requires to function (config reload `<prefix>r`, sidebar toggle `<prefix>Tab`, mouse on). It does not define pane-splitting, pane-navigation (arrow keys, vim-style hjkl), or detach bindings.
+**Decision**: `aid/tmux.conf` ships two categories of keybinds beyond the essential (reload, sidebar toggle, mouse):
 
-**Reason**: aid's tmux server is isolated (`tmux -L aid`), meaning its config is the *only* config loaded — the user's personal `~/.config/tmux/.tmux.conf` is never sourced by aid's server. Any keybind defined in `tmux.conf` is therefore enforced on the user with no opt-out short of forking. Navigation style (arrow vs vim-style) is deeply personal. Shipping opinionated nav bindings would either conflict with muscle memory or require users to edit aid's config. The safer default is a minimal config: users who want custom nav bindings can source `aid/tmux.conf` from their personal tmux config (which gives them access to the IDE layout in their regular tmux session) and add their own bindings there.
+1. **Pane navigation** (`M-Left/Right/Up/Down`, `C-h/j/k/l`, no prefix) — shipped as defaults.
+2. **Pane management** (`M-v` split-h, `M-h` split-v, `M-q` kill-pane, `M-S-q` detach) — shipped as defaults, commented as opinionated.
+
+The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim config via `tmux.nvim`, which intercepts them inside nvim and passes them to tmux when there is no nvim split in that direction. They cannot be omitted without breaking cross-pane navigation for the expected three-pane layout. The management binds are validated for aid's workflow but carry a note that users should remove or rebind if they conflict with their terminal emulator.
+
+**Reason**: aid's tmux server is isolated — its config is the *only* config loaded; the user's personal `~/.config/tmux/.tmux.conf` is never sourced. Shipping no navigation binds would leave users unable to move between panes without mouse or the verbose `<prefix><arrow>`. The chosen binds have been validated against aid's three-pane layout over sustained daily use. Splitting, kill-pane, and detach are common enough to be useful defaults; they are clearly labelled so users know they can replace them.
 
 ---
 
