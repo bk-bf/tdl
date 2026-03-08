@@ -21,11 +21,10 @@ boot.sh (curl | bash)
         ├── 2. TPM clone
         ├── 3. treemux plugin via TPM headless (tmux -L aid -f <AID_DIR>/tmux.conf)
         ├── 4. symlinks:
-        │       ~/.config/aid/treemux   → aid/nvim-treemux/
-        │       ~/.config/tmux/plugins/treemux/.../watch_and_update.sh → aid/nvim-treemux/
-        │       ~/.config/tmux/ensure_treemux.sh → aid/ensure_treemux.sh
-        │       ~/.local/bin/aid        → aid/aid.sh
-        │       (main nvim: no symlink — aid.sh sets XDG_CONFIG_HOME=$AID_DIR at launch)
+        │       ~/.config/aid/treemux                              → aid/nvim-treemux/
+        │       $AID_DIR/tmux/plugins/treemux/.../watch_and_update.sh → aid/nvim-treemux/
+        │       ~/.local/bin/aid                                   → aid/aid.sh
+        │       (main nvim: no symlink — aid.sh sets all XDG dirs to $AID_DIR at launch)
         ├── 5. nvim-treemux headless lazy sync  (NVIM_APPNAME=treemux) ← spinner
         ├── 5b. main nvim headless lazy sync    (NVIM_APPNAME=nvim)    ← spinner
         └── 6. (no shell injection — aid is a standalone script in PATH)
@@ -55,14 +54,17 @@ aid.sh
   ├── parse .aidignore (walks up from launch_dir, up to 20 levels)
   ├── gen-tmux-palette.sh (generates tmux/palette.conf from nvim/lua/palette.lua)
   ├── tmux -L aid -f <AID_DIR>/tmux.conf new-session -d -s <session>
-  ├── set-environment -g:
-  │       AID_DIR             → <AID_DIR>
-  │       AID_IGNORE          → comma-separated .aidignore entries
-  │       OPENCODE_CONFIG_DIR → <AID_DIR>/opencode
-  │       NVIM_APPNAME        → nvim
-  │       XDG_CONFIG_HOME     → <AID_DIR>   (main nvim resolves config to AID_DIR/nvim)
-  │   set-environment -t <session>:
-  │       AID_NVIM_SOCKET     → /tmp/aid-nvim-<session>.sock  (session-local)
+   ├── set-environment -g:
+   │       AID_DIR             → <AID_DIR>
+   │       AID_IGNORE          → comma-separated .aidignore entries
+   │       OPENCODE_CONFIG_DIR → <AID_DIR>/opencode
+   │       NVIM_APPNAME        → nvim
+   │       XDG_CONFIG_HOME     → <AID_DIR>   (main nvim config  → AID_DIR/nvim)
+   │       XDG_DATA_HOME       → <AID_DIR>   (main nvim data    → AID_DIR/nvim)
+   │       XDG_STATE_HOME      → <AID_DIR>   (main nvim state   → AID_DIR/nvim)
+   │       XDG_CACHE_HOME      → <AID_DIR>   (main nvim cache   → AID_DIR/nvim)
+   │   set-environment -t <session>:
+   │       AID_NVIM_SOCKET     → /tmp/aid-nvim-<session>.sock  (session-local)
   ├── poll loop until @treemux-key-Tab is set (replaces sleep 1.5)
   ├── capture editor_pane_id (list-panes -F "#{pane_id}" | head -1)
   ├── split-window -h -p 29 → spawned directly into opencode process
@@ -71,10 +73,12 @@ aid.sh
   ├── select-pane editor_pane_id
   ├── run-shell ensure_treemux.sh -t editor_pane_id  (opens sidebar)
   ├── respawn-pane -k editor_pane_id → nvim restart loop
-  │       cd <launch_dir>; while true; do
-  │         rm -f <nvim_socket>
-  │         XDG_CONFIG_HOME=<AID_DIR> NVIM_APPNAME=nvim nvim --listen <nvim_socket>
-  │       done
+   │       cd <launch_dir>; while true; do
+   │         rm -f <nvim_socket>
+   │         XDG_CONFIG_HOME=<AID_DIR> XDG_DATA_HOME=<AID_DIR>
+   │         XDG_STATE_HOME=<AID_DIR>  XDG_CACHE_HOME=<AID_DIR>
+   │         NVIM_APPNAME=nvim nvim --listen <nvim_socket>
+   │       done
   │       (bypasses interactive shell entirely — zsh autocorrect/send-keys
   │        mangling cannot fire; pane is never a bare shell)
   └── attach -t <session>
@@ -97,7 +101,10 @@ Set via `tmux -L aid set-environment -g` before any pane is created. All child s
 | `AID_DIR` | path to `aid/main/` | Lets scripts locate the repo without assumptions about install path |
 | `AID_IGNORE` | comma-separated patterns | Populated from `.aidignore` (found by walking up from `$PWD`) |
 | `NVIM_APPNAME` | `nvim` | Main editor; with `XDG_CONFIG_HOME=$AID_DIR` resolves config to `$AID_DIR/nvim` |
-| `XDG_CONFIG_HOME` | `$AID_DIR` | Main nvim resolves config directly to `$AID_DIR/nvim` — no symlink in `~/.config/` required |
+| `XDG_CONFIG_HOME` | `$AID_DIR` | nvim config → `$AID_DIR/nvim` — no symlink in `~/.config/` required |
+| `XDG_DATA_HOME` | `$AID_DIR` | nvim plugin data / lazy.nvim → `$AID_DIR/nvim` — not `~/.local/share/nvim` |
+| `XDG_STATE_HOME` | `$AID_DIR` | nvim shada / swap / undo → `$AID_DIR/nvim` — not `~/.local/state/nvim` |
+| `XDG_CACHE_HOME` | `$AID_DIR` | nvim cache → `$AID_DIR/nvim` — not `~/.cache/nvim` |
 | `OPENCODE_CONFIG_DIR` | `$AID_DIR/opencode` | Isolates opencode config from `~/.config/opencode` |
 | `AID_NVIM_SOCKET` | `/tmp/aid-nvim-<session>.sock` | Sidebar nvim reads at startup to set `g:nvim_tree_remote_socket_path`; set session-local (`-t`) so multiple concurrent sessions don't clobber each other |
 
@@ -115,8 +122,9 @@ aid runs entirely isolated from the user's existing nvim and tmux setup.
 |---|---|
 | tmux server | `tmux -L aid` — dedicated named socket, separate from the default server |
 | tmux config | `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses `~/.tmux.conf` and `~/.config/tmux/tmux.conf` entirely |
-| main nvim | `XDG_CONFIG_HOME=$AID_DIR` + `NVIM_APPNAME=nvim` → config at `$AID_DIR/nvim`; no symlink in `~/.config/` |
-| sidebar nvim | `XDG_CONFIG_HOME=~/.config/aid` + `NVIM_APPNAME=treemux` → config at `~/.config/aid/treemux` → `aid/nvim-treemux/` |
+| tmux plugins | TPM and all plugins installed under `$AID_DIR/tmux/plugins/` — not `~/.config/tmux/plugins/` |
+| main nvim | All four XDG dirs (`XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`) set to `$AID_DIR`; with `NVIM_APPNAME=nvim` all nvim paths resolve to `$AID_DIR/nvim/` |
+| sidebar nvim | `XDG_CONFIG_HOME=~/.config/aid` + `NVIM_APPNAME=treemux` → config at `~/.config/aid/treemux` → `aid/nvim-treemux/`; data/state/cache → `$AID_DIR/treemux/` |
 | opencode | `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` — commands and package.json at `aid/opencode/`, not `~/.config/opencode` |
 | shell | `aid` is a standalone script in `~/.local/bin` — no shell function injection, no `~/.bashrc` modification |
 
@@ -125,11 +133,10 @@ Symlink table:
 | Config path | Points to |
 |---|---|
 | `~/.config/aid/treemux` | `aid/nvim-treemux/` |
-| `~/.config/tmux/ensure_treemux.sh` | `aid/ensure_treemux.sh` |
-| `~/.config/tmux/plugins/treemux/.../watch_and_update.sh` | `aid/nvim-treemux/watch_and_update.sh` |
+| `$AID_DIR/tmux/plugins/treemux/.../watch_and_update.sh` | `aid/nvim-treemux/watch_and_update.sh` |
 | `~/.local/bin/aid` | `aid/aid.sh` |
 
-`~/.config/nvim` and `~/.config/aid/nvim` are **not touched** — the user's existing nvim config (if any) is preserved.
+`~/.config/nvim`, `~/.config/aid/nvim`, and `~/.config/tmux/` are **not touched** — the user's existing nvim and tmux config (if any) is preserved.
 
 ## `nvim/init.lua` structure
 
@@ -333,7 +340,7 @@ At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `AID_IG
 ### vs. Neovim distributions (LazyVim, SpaceVim)
 - **Workspace vs. editor**: aid orchestrates multiple nvim instances + tmux panes; LazyVim only configures the editor process
 - **Persistent sidebar**: separate `NVIM_APPNAME=treemux` instance — never closes on focus loss, tracks any `cd`
-- **Cross-project bookmarks**: `~/.local/share/nvim/global_bookmarks` — unlike Harpoon, works across unrelated directories
+- **Cross-project bookmarks**: `$AID_DIR/nvim/global_bookmarks` — unlike Harpoon, works across unrelated directories
 - **Unified statusline**: `vim-tpipeline` exports nvim statusline to tmux status bar, visible across all panes
 - **Session management**: `ensure_treemux.sh` auto-recreates the layout on reattach
 
@@ -341,7 +348,7 @@ At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `AID_IG
 
 - **`aid.sh` is a standalone script, not a shell function**: symlinked into `~/.local/bin/aid` by `install.sh`. `AID_DIR` resolved via `realpath "${BASH_SOURCE[0]}"`. No `aliases.sh`, no shell injection, no `~/.bashrc` modification.
 - **Session routing in `aid.sh`**: `aid` with no args creates a new session. `-a` attaches (interactive list or named). `-l` lists sessions.
-- **`NVIM_APPNAME=nvim`** (not `nvim-aid`): combined with `XDG_CONFIG_HOME=~/.config/aid`, config lands at `~/.config/aid/nvim`, leaving `~/.config/nvim` untouched.
+- **`NVIM_APPNAME=nvim`** (not `nvim-aid`): combined with all four `XDG_*` dirs pointing to `$AID_DIR`, all nvim paths (config/data/state/cache) land under `$AID_DIR/nvim/`, leaving `~/.config/nvim` and `~/.local/share/nvim` untouched.
 - **`tmux -L aid`** for all tmux commands: every script (`aid.sh`, `ensure_treemux.sh`, `sync.lua`) targets the named socket explicitly — no ambiguity about which server is being addressed.
 - **`AID_DIR` env var** exported into the tmux server: `set-environment -g AID_DIR` so all panes and scripts can locate the repo root without assumptions about install path.
 - **`--git-dir` not `--git-common-dir`** for lazygit worktree detection: `--git-common-dir` returns the bare repo root, causing git to use it as the work-tree and see all files as deleted. `--git-dir` returns the worktree-specific path (`aid/worktrees/main`) which correctly scopes the index.

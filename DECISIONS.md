@@ -67,15 +67,18 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 ### ADR-006: Full environment isolation
 
-**Date**: 2026-03
+**Date**: 2026-03 (extended 2026-03)
 **Decision**: aid must not conflict with the user's existing nvim or tmux setup. All runtime state is isolated:
-- tmux: dedicated server socket `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses all user tmux configs
-- nvim: `XDG_CONFIG_HOME=$HOME/.config/aid` set in the tmux server environment; `NVIM_APPNAME=nvim` (main) and `NVIM_APPNAME=treemux` (sidebar) resolve to `~/.config/aid/nvim` and `~/.config/aid/treemux` respectively. `~/.config/nvim` is never touched.
-- opencode: `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` — config reads from inside the repo, not `~/.config/opencode/`
-- install.sh: does not inject into any user config file; `aid` is symlinked into `~/.local/bin/aid` — the only mutation to the user's environment
-- All scripts (`ensure_treemux.sh`, `sync.lua`): use `tmux -L aid` for every tmux command
 
-**Reason**: The previous model (symlink `~/.config/nvim → aid/nvim/`, source `aid/tmux.conf` from user's tmux config) overwrote the user's nvim config and polluted their tmux config. A new machine install of aid should be truly zero-conflict — users who already have an nvim config or complex tmux config must be able to install and run aid without any breakage to their existing environment.
+- **tmux server**: dedicated socket `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses all user tmux configs; `~/.config/tmux/` is never touched
+- **tmux plugins**: TPM and all plugins installed under `$AID_DIR/tmux/plugins/` — not `~/.config/tmux/plugins/`
+- **nvim (all four XDG dirs)**: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` are all set to `$AID_DIR` in the tmux server environment. With `NVIM_APPNAME=nvim`, nvim appends the appname to each base, yielding `$AID_DIR/nvim/{config,data,state,cache}`. `~/.config/nvim`, `~/.local/share/nvim`, `~/.local/state/nvim`, and `~/.cache/nvim` are never touched.
+- **sidebar nvim**: `XDG_CONFIG_HOME=~/.config/aid` (config is a symlink there — required because treemux resolves via that path); `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` all `$AID_DIR`, so sidebar data/state/cache land under `$AID_DIR/treemux/`
+- **opencode**: `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` — config reads from inside the repo, not `~/.config/opencode/`
+- **install.sh**: does not inject into any user config file; only writes `~/.config/aid/treemux` (symlink) and `~/.local/bin/aid` (symlink)
+- **All scripts** (`ensure_treemux.sh`, `sync.lua`): use `tmux -L aid` for every tmux command
+
+**Extension rationale (2026-03)**: The original decision only set `XDG_CONFIG_HOME`, leaving `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` unset. This caused nvim to write plugin data, state (shada/swap/undo), and cache into `~/.local/share/nvim/`, `~/.local/state/nvim/`, and `~/.cache/nvim/` respectively — violating the isolation guarantee. TPM and the treemux plugin were also being installed into `~/.config/tmux/plugins/`. All four XDG dirs are now explicitly scoped, and tmux plugins moved into the repo directory.
 
 **Supersedes**: ADR-003, ADR-004 (see `archive/DECISIONS-2026-03.md`).
 
