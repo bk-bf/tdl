@@ -7,9 +7,11 @@
 # aid never touches ~/.config/nvim or ~/.config/tmux/.tmux.conf.
 # Main editor config is resolved directly at launch time:
 #   XDG_CONFIG_HOME=$AID_DIR, NVIM_APPNAME=nvim → $AID_DIR/nvim (no symlink)
-# All four XDG dirs (config/data/state/cache) are redirected to $AID_DIR so
-# nvim plugin data, state, and cache all land under $AID_DIR — not in
-# ~/.local/share/nvim, ~/.local/state/nvim, or ~/.cache/nvim.
+# Runtime artefacts (plugin data, state, cache) go to standard XDG locations
+# under an aid-specific namespace — not inside the source tree:
+#   XDG_DATA_HOME=~/.local/share/aid  → ~/.local/share/aid/nvim/
+#   XDG_STATE_HOME=~/.local/state/aid → ~/.local/state/aid/nvim/
+#   XDG_CACHE_HOME=~/.cache/aid       → ~/.cache/aid/nvim/
 # Sidebar still uses a symlink (treemux lives outside $AID_DIR):
 #   ~/.config/aid/treemux → aid/nvim-treemux/ (sidebar, NVIM_APPNAME=treemux)
 # tmux runs on a dedicated server socket (tmux -L aid) with -f pointing directly
@@ -90,14 +92,14 @@ _spin() {
 }
 
 echo "==> Bootstrapping treemux sidebar plugins (lazy sync)..."
-XDG_CONFIG_HOME="$AID_CONFIG" XDG_DATA_HOME="$AID" XDG_STATE_HOME="$AID" XDG_CACHE_HOME="$AID" \
+XDG_CONFIG_HOME="$AID_CONFIG" XDG_DATA_HOME="$HOME/.local/share/aid" XDG_STATE_HOME="$HOME/.local/state/aid" XDG_CACHE_HOME="$HOME/.cache/aid" \
   NVIM_APPNAME=treemux nvim --headless "+Lazy! sync" +qa 2>/dev/null &
 _nvim_pid=$!
 _spin "syncing treemux plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
 
 echo "==> Bootstrapping main nvim plugins (lazy sync)..."
-XDG_CONFIG_HOME="$AID" XDG_DATA_HOME="$AID" XDG_STATE_HOME="$AID" XDG_CACHE_HOME="$AID" \
+XDG_CONFIG_HOME="$AID" XDG_DATA_HOME="$HOME/.local/share/aid" XDG_STATE_HOME="$HOME/.local/state/aid" XDG_CACHE_HOME="$HOME/.cache/aid" \
   NVIM_APPNAME=nvim nvim --headless "+Lazy! sync" +qa 2>/dev/null &
 _nvim_pid=$!
 _spin "syncing nvim plugins…" $_nvim_pid
