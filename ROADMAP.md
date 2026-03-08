@@ -11,7 +11,7 @@
 - [x] **T-014**: Fix BUG-009 — opencode file edits not visible in nvim until focus switch; `pane-focus-in` hook in `tmux.conf` pushes `checktime` into `AID_NVIM_SOCKET` on every pane switch (see [bugs/BUG-009.md](bugs/BUG-009.md))
 - [x] **T-020**: Sidebar architecture decision — ADR-013 made: treemux stays (see ADR-013)
 - [x] **T-015**: Fix BUG-010 — opening an already-open file from the sidebar creates a duplicate tab; `_remote_bufnr()` dedup check added to both `tabnew_follow_symlinks()` (nvim-tree) and the neo-tree `file_open_requested` handler; helper promoted to module scope so both paths share it (see [bugs/BUG-010.md](bugs/BUG-010.md))
-- [ ] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; suppress the Lua `require` notification in the treemux bar and isolate the redraw to the sidebar pane only
+- [x] **T-016**: Fix BUG-008 — treemux bottom bar flickers and editor line numbers bleed on `.aidignore` reset; replace `tmux send-keys` with direct msgpack-RPC: `treemux_init.lua` registers `vim.v.servername` in tmux option `@-treemux-nvim-socket-<editor_pane_id>` on VimEnter/VimLeave; `sync.lua` reads the option and calls `vim.rpcnotify(chan, "nvim_exec_lua", "require('aidignore').reset()", {})` — silent, no cmdline flash, no cross-pane redraw bleed
 
 ## Phase 2 — Differentiate (architectural upgrades)
 
@@ -24,7 +24,7 @@
   - **Scope boundary**: aid wires these plugins together with sensible defaults and pre-configured keymaps. It does not attempt to provide zero-config per-project debugging (virtualenv paths, source maps, attach configs are inherently project-specific and belong in per-project `.nvim.lua` or `launch.json`). The seam aid smooths is "none of these tools are installed or connected" → "they are installed, connected, and have sane keymaps". The remaining per-project tuning is user-land.
   - **Known rough edge**: Python debugging — debugpy installed by mason runs in mason's own venv, not the project venv. Users must point `dap.configurations.python[n].pythonPath` at their project interpreter. Document this prominently rather than attempting a fragile auto-detect.
 
-- [ ] **T-006**: Upgrade sidebar sync to RPC — replace `tmux send-keys :NvimTreeRefresh` with `vim.fn.sockconnect` to sidebar's `$NVIM` socket; current send-keys path silently injects keystrokes if user is typing in the sidebar, risking file corruption
+- [x] **T-006**: Upgrade sidebar sync to RPC — superseded by T-016: `sync.lua` now contacts treemux nvim via `vim.fn.sockconnect` + `vim.rpcnotify`; `send-keys` is gone entirely; `NvimTreeRefresh` replaced by `aidignore.reset()` over msgpack-RPC
 - [ ] **T-007**: Self-contained theme system — aid owns its color palette; bufferline, statusbar, treemux, and opencode driven from a single source in the repo (no external theme dependency)
 - [ ] **T-008**: Add `aid update` command — git pull + re-run `install.sh`
 - [ ] **T-017**: Replace `lazygit.nvim` env-var integration with a raw terminal float — build the lazygit command directly (`lazygit -w <work_tree> -g <git_dir>`), never touch `GIT_DIR`/`GIT_WORK_TREE` env vars; eliminates BUG-006 class of env leaks permanently (see [bugs/BUG-006.md](bugs/BUG-006.md))
@@ -43,7 +43,8 @@
 
 ## Done
 
-- [x] **2026-03**: T-020 / ADR-013 — sidebar architecture decided: treemux stays; nvim-tree-inside-main-nvim trialled and reverted (terminal bleed + tab bar span are structural, not fixable without deeper UX work); question closed; T-015, T-016, T-006 unblocked
+- [x] **2026-03**: T-016 + T-006 — BUG-008 fixed: treemux bottom bar flicker + editor line-number bleed eliminated; `send-keys` replaced with direct msgpack-RPC; `sync.checktime()` split out from `sync.sync()` so BufEnter/CursorHold no longer repaint sign column
+- [x] **2026-03**: T-020 / ADR-013 — sidebar architecture decided: treemux stays; nvim-tree-inside-main-nvim trialled and reverted (terminal bleed + tab bar span are structural, not fixable without deeper UX work); question closed
 - [x] **2026-03**: Fix GIT_DIR env leak after lazygit closes (BUG-006) — clear `vim.env.GIT_DIR/GIT_WORK_TREE` immediately after `vim.cmd("LazyGit")` so gitsigns re-attaches cleanly on `gs.refresh()` and statusline git info is not lost
 - [x] **2026-03**: Fix lazygit `--git-dir` worktree detection (final): `find_git_root()` handles both worktree (`.git` file) and normal repo (`.git` dir); `cwd` fallback; always sets `GIT_DIR`+`GIT_WORK_TREE` so lazygit context tracks the open buffer's worktree — push and branch ops work correctly from any worktree
 - [x] **2026-03**: `.aidignore` live reload — `aidignore.lua`: disk-based pattern read, `vim.uv` fs_event watcher, `explorer.filters.ignore_list` mutation, live reload in both nvim instances without `setup()` re-call (see ADR-008)

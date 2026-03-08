@@ -37,14 +37,14 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 **Why closed now**: further re-evaluation of workarounds (e.g. migrating terminal usage from tmux splits to nvim `:terminal` splits) would require ongoing UX/UI design work with no guaranteed resolution. The treemux architecture works, the bugs it carries (BUG-008, BUG-010) and the debt it carries (T-006) are concrete and fixable. Closing the question and fixing the known issues is better than continued deliberation.
 
-**Consequence**: T-020 is closed. T-015 (BUG-010), T-016 (BUG-008), and T-006 are unblocked and can proceed.
+**Consequence**: T-020 is closed. T-015 (BUG-010) and T-016 (BUG-008) are done. T-006 was superseded by T-016 (send-keys replaced with direct msgpack-RPC throughout).
 
 ---
 
 ### ADR-001: Install path `~/.local/share/aid`
 
 **Date**: 2026-03
-**Decision**: Default install to `~/.local/share/aid`, override with `TDL_DIR`.
+**Decision**: Default install to `~/.local/share/aid`, override with `AID_DIR`.
 **Reason**: XDG Base Directory spec — `~/.local/share` is the correct location for user-installed application data (scripts, plugins, runtime files). Previous default `~/Documents/Projects/special_projects/tdl` was personal/idiosyncratic.
 
 ---
@@ -131,7 +131,7 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 **Why not duplicate the file**: duplicating `aidignore.lua` into `nvim-treemux/` would create a maintenance burden — two copies of the same ignore-list logic, filter-application logic, and S2 fallback documentation would need to stay in sync.
 
-**Note**: obsolete if ADR-013 resolves to removing treemux; kept for historical record until that decision is made.
+**Note**: `package.path` is still required now that ADR-013 has confirmed treemux stays permanently.
 
 ---
 
