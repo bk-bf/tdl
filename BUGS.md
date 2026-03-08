@@ -12,10 +12,6 @@
 
 **Status**: open — **Roadmap**: T-015 — see [bugs/BUG-010.md](bugs/BUG-010.md)
 
-### BUG-009: opencode file edits not reflected in nvim until user switches pane focus
-
-**Status**: open — **Roadmap**: T-014 — see [bugs/BUG-009.md](bugs/BUG-009.md)
-
 <!-- template:
 ### BUG-N: title
 **Status**: open | investigating | blocked
@@ -24,6 +20,10 @@
 -->
 
 ## Closed
+
+### BUG-009: opencode file edits not reflected in nvim until user switches pane focus
+
+**Status**: closed — T-014 — see [bugs/BUG-009.md](bugs/BUG-009.md)
 
 ### BUG-007: dotfiles git repo deletes ~/.config/nvim symlink on branch operations
 
