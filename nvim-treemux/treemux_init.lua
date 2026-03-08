@@ -37,6 +37,20 @@ if not vim.loop.fs_stat(lazypath) then
 end
 vim.opt.rtp:prepend(lazypath)
 
+-- Dedup helper (T-015/BUG-010): returns the buffer number of abs_path in the remote
+-- nvim via a raw RPC call, or -1 if not loaded. Used by both the nvim-tree keymap handler
+-- and the neo-tree file_open_requested event handler.
+local function _remote_bufnr(socket_path, abs_path)
+  local bufnr = -1
+  pcall(function()
+    local chan = vim.fn.sockconnect("pipe", socket_path, { rpc = true })
+    bufnr = vim.rpcrequest(chan, "nvim_call_function", "bufnr",
+      { vim.fn.fnamemodify(abs_path, ":p") })
+    pcall(vim.fn.chanclose, chan)
+  end)
+  return bufnr
+end
+
 local function nvim_tree_on_attach(bufnr)
   local api = require("nvim-tree.api")
   local nt_remote = require("nvim_tree_remote")
@@ -50,13 +64,20 @@ local function nvim_tree_on_attach(bufnr)
   -- The editor pane always runs nvim (aid.sh uses a restart loop), so the socket at
   -- AID_NVIM_SOCKET is always live. The fallback split in nvim_tree_remote is disabled
   -- (pane = nil) so a dead socket produces a clear error instead of a rogue new pane.
+
   local function tabnew_follow_symlinks()
     local node = api.tree.get_node_under_cursor()
     if node and (node.type == "file" or node.type == "link") then
       local socket_path = vim.g.nvim_tree_remote_socket_path
       local tmux_opts = nt_remote.tmux_defaults()
       tmux_opts.pane = nil  -- never create a new split; error if socket unreachable
-      require("nvim_tree_remote").remote_nvim_open(socket_path, "tabnew", node.absolute_path, tmux_opts)
+      local bufnr = _remote_bufnr(socket_path, node.absolute_path)
+      if bufnr ~= -1 then
+        -- Already open — switch to the existing tab/buffer instead of duplicating
+        require("nvim_tree_remote.transport").exec("buffer " .. bufnr, socket_path, 0)
+      else
+        require("nvim_tree_remote").remote_nvim_open(socket_path, "tabnew", node.absolute_path, tmux_opts)
+      end
     else
       nt_remote.tabnew()
     end
@@ -355,6 +376,15 @@ require("lazy").setup({
                 -- HACK: use "tabnew" as a command to open without tmux split
                 -- the keybinding is `t`
                 tmux_opts.split_position = ""
+                -- Dedup (T-015/BUG-010): if the file is already loaded in the main
+                -- nvim, switch to the existing buffer instead of opening a new tab.
+                local socket_path = vim.g.nvim_tree_remote_socket_path
+                local existing = _remote_bufnr(socket_path, args.path)
+                if existing ~= -1 then
+                  require("nvim_tree_remote.transport").exec(
+                    "buffer " .. existing, socket_path, 0)
+                  return { handled = true }
+                end
                 open_cmd = "edit"
               end
               nt_remote.remote_nvim_open(nil, open_cmd, args.path, tmux_opts)
