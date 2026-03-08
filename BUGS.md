@@ -4,21 +4,21 @@
 
 ### BUG-008: treemux bottom bar flickers on aidignore reset; bleed into editor line numbers
 
-**Status**: open
+**Status**: open — **Roadmap**: T-016
 **Repro**: any event that triggers `require('aidignore').reset()` (e.g. `.aidignore` change, `DirChanged`) causes two symptoms: (1) a brief visual flash in the treemux bottom status bar where the `lua require('aidignore') reset` notification appears; (2) the highlighted line numbers in the main nvim editor pane flicker, as if the refresh from the sidebar bleeds into the editor display.
 **Notes**: Two sub-goals — suppress the function notification in the treemux bar; prevent the refresh from visually bleeding into the editor pane (isolate redraw to treemux only).
 
 ### BUG-010: opening an already-open file creates a duplicate tab
 
-**Status**: open — see [bugs/BUG-010.md](bugs/BUG-010.md)
+**Status**: open — **Roadmap**: T-015 — see [bugs/BUG-010.md](bugs/BUG-010.md)
 
 ### BUG-009: opencode file edits not reflected in nvim until user switches pane focus
 
-**Status**: open — see [bugs/BUG-009.md](bugs/BUG-009.md)
+**Status**: open — **Roadmap**: T-014 — see [bugs/BUG-009.md](bugs/BUG-009.md)
 
 ### BUG-007: dotfiles git repo deletes ~/.config/nvim-tdl symlink on branch operations
 
-**Status**: open — see [bugs/BUG-007.md](bugs/BUG-007.md)
+**Status**: open — **Roadmap**: T-013 — see [bugs/BUG-007.md](bugs/BUG-007.md)
 
 <!-- template:
 ### BUG-N: title
@@ -45,6 +45,6 @@
 
 ### BUG-006: GIT_DIR env leak — gitsigns loses git info / corruption commits
 
-**Status**: closed — see [bugs/BUG-006.md](bugs/BUG-006.md)
+**Status**: closed — final solution tracked as T-017 — see [bugs/BUG-006.md](bugs/BUG-006.md)
 
 *(BUG-005, BUG-001, BUG-002 moved to [archive/BUGS-2026-03.md](archive/BUGS-2026-03.md))*
