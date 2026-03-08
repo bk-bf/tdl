@@ -1,3 +1,4 @@
+<!-- LOC cap: 288 (source: 2057, ratio: 0.14, updated: 2026-03) -->
 # Architecture
 
 ## Overview
@@ -37,15 +38,13 @@ boot.sh (curl | bash)
 ### Session routing
 
 ```
-aid ls            → list sessions (tmux list-sessions) and exit
-aid new           → skip routing, always create a new session
-aid <name>        → attach to named session directly and exit
-aid               → examine existing sessions:
-                      0 sessions → fall through to create
-                      1 session  → attach immediately and exit
-                      2+ sessions → print numbered list, prompt for choice
-                                    [n] = create new session in $PWD
+aid -l / --list   → list sessions (tmux list-sessions) and exit
+aid -a            → interactive list; auto-attach if only one session
+aid -a <name>     → attach to named session directly and exit
+aid               → create a new session in $PWD
 ```
+
+`attach_or_switch` helper uses `switch-client` when already inside tmux (attach fails inside a session).
 
 ### Session creation
 
@@ -81,11 +80,11 @@ aid.sh
 
 ### Editor pane restart loop
 
-The editor pane is respawned via `respawn-pane -k` directly into the nvim restart loop — bypassing the interactive shell entirely. This means zsh autocorrect and `send-keys` mangling cannot fire. When the user quits nvim (`:q`), the loop immediately restarts it on the same socket path. The pane is **never** a bare shell — the only way to exit is to close the tmux window or run `aid kill`.
+The editor pane is respawned via `respawn-pane -k` directly into the nvim restart loop — bypassing the interactive shell entirely. When the user quits nvim (`:q`), the loop immediately restarts it on the same socket path. The pane is **never** a bare shell — the only way to exit is to close the tmux window.
 
 ### Stable pane IDs
 
-`editor_pane_id` and `opencode_pane_id` are captured by stable `#{pane_id}` tokens immediately after creation. Subsequent operations (treemux inserting the sidebar, layout changes) do not affect them — all `send-keys` and `select-pane` calls target by ID, not by position.
+`editor_pane_id` and `opencode_pane_id` are captured by stable `#{pane_id}` tokens immediately after creation. Subsequent operations (treemux inserting the sidebar, layout changes) do not affect them.
 
 ## Environment variables (tmux server scope)
 
@@ -101,7 +100,9 @@ Set via `tmux -L tdl set-environment -g` before any pane is created. All child s
 
 ## Pane ownership
 
-All pane geometry is owned by `aid.sh`. `tmux.conf` owns only plugin config and keybinds — **never sizes** — with one exception: `@treemux-tree-width 26` must live in `tmux.conf` so treemux reads it before `sidebar.tmux` runs (it cannot be set in `aid.sh` after the sidebar is already open).
+All pane geometry is owned by `aid.sh` and `ensure_treemux.sh`. `tmux.conf` owns only plugin config and keybinds — **never sizes** — with one exception: `@treemux-tree-width 26` must live in `tmux.conf` so treemux reads it before `sidebar.tmux` runs (it cannot be set in `aid.sh` after the sidebar is already open).
+
+`aid.sh` does the initial editor/opencode split at `-p 29` (29% for opencode). After `ensure_treemux.sh` opens the sidebar, it re-enforces the opencode column count to 28% of the total window width via `resize-pane -x`, accounting for the sidebar's added width.
 
 ## Isolation strategy
 
@@ -154,6 +155,8 @@ The `VimEnter` autocmd (opens nvim-tree outside tmux; opens cheatsheet on empty 
 
 `nvim/cheatsheet.md` is opened as a normal file buffer (`vim.cmd("edit " .. path)`) when nvim starts with no file argument. No special read-only styling, no buffer tracking, no window-option autocmds — just a plain `edit`. Re-open at any time with `<leader>?`. Dismissed by opening any other file; no auto-restore logic.
 
+The path is built from `TDL_DIR` (env, real path) rather than `stdpath("config")` (symlink) to avoid W13 "file created after editing started" on writes.
+
 ## Git-sync coordinator (`nvim/lua/sync.lua`)
 
 Because the two nvim instances are isolated processes, external git operations (branch switch, pull, stash pop via lazygit) leave both instances with stale state: gitsigns shows old-branch hunks, the statusline branch name is wrong, nvim-tree holds paths that no longer exist on the new branch (→ crash on next refresh).
@@ -189,11 +192,11 @@ All operations are `pcall`-wrapped and run inside `vim.schedule` — never block
 
 ### Trigger points
 
-`sync()` is wired to three trigger points in `nvim/init.lua`:
+`sync()` is wired to four trigger points in `nvim/init.lua`:
 
 | Trigger | Why |
 |---|---|
-| `FocusGained` / `BufEnter` / `CursorHold` | nvim regains focus after any external tool |
+| `FocusGained` / `BufEnter` / `CursorHold` / `CursorHoldI` | nvim regains focus after any external tool |
 | `TermClose` | fires the moment the lazygit float buffer closes |
 | explicit call after `vim.cmd("LazyGit")` | belt-and-suspenders: catches the case where `TermClose` fires before the float is fully torn down |
 
@@ -210,11 +213,11 @@ The current sidebar refresh uses `tmux send-keys`, which has a minor timing depe
 
 ## Opencode integration
 
-Opencode runs in the rightmost pane (29% of total width). It is isolated from the user's `~/.config/opencode` via `OPENCODE_CONFIG_DIR=$TDL_DIR/opencode`.
+Opencode runs in the rightmost pane (initial split 29%; resized to 28% after sidebar opens). It is isolated from the user's `~/.config/opencode` via `OPENCODE_CONFIG_DIR=$TDL_DIR/opencode`.
 
 Custom slash commands live in `aid/opencode/commands/`:
 - `commit.md` — generates a conventional commit message from staged diff
-- `udoc.md` — updates `aid/docs/` to reflect recent code changes
+- `udoc.md` — updates `aid/docs/` to reflect recent code changes (with LOC cap, archiving, and pruning)
 
 `aid/opencode/package.json` declares the project name for the opencode workspace.
 
@@ -227,12 +230,13 @@ Custom slash commands live in `aid/opencode/commands/`:
 ```
 aidignore.patterns()  — returns { raw = {...}, telescope = {...} }
                          raw:       plain strings for nvim-tree filters.custom
+                                    (glob patterns excluded — triggers E33 in vim.fn.match)
                          telescope: Lua patterns for file_ignore_patterns
                          result is cached until reset() or watch() fires
 
 aidignore.watch()     — start (or restart) a vim.uv fs_event watcher on the
                          nearest .aidignore; on change: bust cache + re-apply
-                         Called after nvim-tree setup and on DirChanged.
+                         Called from reset() and directly after nvim-tree setup.
 
 aidignore.reset()     — bust cache + _apply_to_nvimtree() + restart watch()
                          Called from DirChanged autocmd and reload().
@@ -246,7 +250,7 @@ The solution: mutate `require("nvim-tree.core").get_explorer().filters.ignore_li
 
 **Stability**: `ignore_list` has existed under this exact name since nvim-tree's multi-instance refactor (PR #2841), with 33 commits to `filters.lua` since then — name unchanged.
 
-**Fallback (S2)**: if `ignore_list` is ever renamed/removed, the fallback is `tmux kill-pane <sidebar_pane_id>` + re-run `ensure_treemux.sh`. ~0.5s visual glitch but fully public API. See comment in `aidignore.lua:84`.
+**Fallback (S2)**: if `ignore_list` is ever renamed/removed, the fallback is `tmux kill-pane <sidebar_pane_id>` + re-run `ensure_treemux.sh`. ~0.5s visual glitch but fully public API. See comment in `aidignore.lua:99–103`.
 
 ### Sidebar integration
 
@@ -278,11 +282,11 @@ At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `TDL_IG
 ## Key design decisions
 
 - **`aid.sh` is a standalone script, not a shell function**: symlinked into `~/.local/bin/aid` by `install.sh`. `TDL_DIR` resolved via `realpath "${BASH_SOURCE[0]}"`. No `aliases.sh`, no shell injection, no `~/.bashrc` modification.
-- **Session routing in `aid.sh`**: `aid` with no args auto-attaches when one session exists, shows a numbered menu when multiple exist. `aid new` forces creation. `aid <name>` attaches directly. `aid ls` lists sessions.
+- **Session routing in `aid.sh`**: `aid` with no args creates a new session. `-a` attaches (interactive list or named). `-l` lists sessions. No subcommands (`aid ls`, `aid new`) — flags only.
 - **Symlinked** for nvim config and treemux scripts: allows `install.sh` re-runs to update transparently.
 - **`NVIM_APPNAME=nvim-tdl`** (not `nvim`): aid's nvim config lives at `~/.config/nvim-tdl`, leaving `~/.config/nvim` untouched for the user's personal config.
 - **`tmux -L tdl`** for all tmux commands: every script (`aid.sh`, `ensure_treemux.sh`, `sync.lua`) targets the named socket explicitly — no ambiguity about which server is being addressed.
 - **`TDL_DIR` env var** exported into the tmux server: `set-environment -g TDL_DIR` so that all panes and scripts can locate the repo root without assumptions about install path.
 - **Orphan install**: `boot.sh` is designed to be piped directly from curl. No pre-existing clone required.
-- **Idempotent**: all steps in `install.sh` are safe to re-run (directory guards, `grep -qF` before inject, `ln -sfn` for dir symlinks).
+- **Idempotent**: all steps in `install.sh` are safe to re-run (directory guards, `ln -sfn` for dir symlinks).
 - **`--git-dir` not `--git-common-dir`** for lazygit worktree detection: `--git-common-dir` returns the bare repo root, causing git to use it as the work-tree and see all files as deleted. `--git-dir` returns the worktree-specific path (`aid/worktrees/main`) which correctly scopes the index.

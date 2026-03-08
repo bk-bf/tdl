@@ -20,24 +20,6 @@ Architecture decision records — why things are the way they are.
 
 ---
 
-## ADR-003: Sourced vs symlinked integration *(superseded by ADR-006)*
-
-**Date**: 2026-03
-**Decision**: `aliases.sh` and `tmux.conf` are sourced from user config files. nvim config and treemux scripts are symlinked.
-**Reason**: Source lines in user config are visible, annotated, and easy to remove. Symlinks for nvim and nvim-treemux allow `install.sh` re-runs to transparently update files without modifying any user-owned config.
-**Superseded**: ADR-006 eliminates the `tmux.conf` source injection entirely and changes the nvim symlink target from `~/.config/nvim` to `~/.config/nvim-tdl`.
-
----
-
-## ADR-004: nvim config lives in aid repo *(superseded by ADR-006)*
-
-**Date**: 2026-03
-**Decision**: Move `~/.config/nvim/` into `aid/nvim/` and symlink `~/.config/nvim → aid/nvim/`. Remove from dotfiles repo (bk-bf/.config).
-**Reason**: aid is an IDE distribution — the nvim config is tightly coupled to the workspace (lazygit worktree fix, treemux keybinds, opencode integration). Co-locating it in aid makes the full IDE reproducible from a single `boot.sh` curl — no separate dotfiles clone required on a fresh machine.
-**Superseded**: ADR-006 changes the symlink target from `~/.config/nvim` to `~/.config/nvim-tdl` (via `NVIM_APPNAME=nvim-tdl`) so the user's existing `~/.config/nvim` is not overwritten.
-
----
-
 ## ADR-005: `--git-dir` not `--git-common-dir` for lazygit worktree detection
 
 **Date**: 2026-03
@@ -52,12 +34,12 @@ Architecture decision records — why things are the way they are.
 **Decision**: aid must not conflict with the user's existing nvim or tmux setup. All runtime state is isolated:
 - tmux: dedicated server socket `tmux -L tdl -f <TDL_DIR>/tmux.conf` — `-f` suppresses all user tmux configs
 - nvim: `NVIM_APPNAME=nvim-tdl` — config at `~/.config/nvim-tdl → aid/nvim/`; `~/.config/nvim` is never touched
-- install.sh: no longer injects into `~/.config/tmux/.tmux.conf`; only injects `source <TDL_DIR>/aliases.sh` into `~/.config/.aliases`
+- install.sh: does not inject into any user config file; `aid` is symlinked into `~/.local/bin/aid` and that is the only mutation to the user's environment
 - All scripts (`ensure_treemux.sh`, `sync.lua`): use `tmux -L tdl` for every tmux command
 
 **Reason**: The previous model (symlink `~/.config/nvim → aid/nvim/`, source `aid/tmux.conf` from user's tmux config) overwrote the user's nvim config and polluted their tmux config. A new machine install of aid should be truly zero-conflict — users who already have an nvim config or complex tmux config must be able to install and run aid without any breakage to their existing environment.
 
-**Supersedes**: ADR-003 (tmux.conf injection removed), ADR-004 (nvim symlink target changed to `~/.config/nvim-tdl`).
+**Supersedes**: ADR-003, ADR-004 (see archive/DECISIONS-2026-03.md).
 
 ---
 
@@ -92,7 +74,7 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 **Stability evidence**: `ignore_list` has existed under this exact name since nvim-tree's multi-instance refactor (PR #2841), with 33 commits to `filters.lua` since then — name unchanged. If the field is renamed in a future nvim-tree update, the code silently skips the mutation (guarded by `if explorer and explorer.filters and explorer.filters.ignore_list`).
 
-**S2 fallback**: documented in `aidignore.lua:79–83`. If `ignore_list` is ever removed, fall back to `tmux kill-pane <sidebar_pane_id>` + re-run `ensure_treemux.sh` to reopen the sidebar fresh. ~0.5s visual glitch but uses only public APIs.
+**S2 fallback**: documented in `aidignore.lua:99–103`. If `ignore_list` is ever removed, fall back to `tmux kill-pane <sidebar_pane_id>` + re-run `ensure_treemux.sh` to reopen the sidebar fresh. ~0.5s visual glitch but uses only public APIs.
 
 **Alternatives rejected**:
 - `setup()` re-call: destroys the live explorer (tested, reverted).
