@@ -9,7 +9,7 @@ Terminal IDE built on tmux + Neovim + [Opencode](https://opencode.ai). Three per
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bk-bf/aid/master/boot.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bk-bf/aid/main/boot.sh | bash
 ```
 
 Installs to `~/.local/share/aid`. Override: `AID_DIR=~/aid curl ...`
