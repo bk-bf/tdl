@@ -53,6 +53,7 @@ Rules:
 - Do not pad to fill the LOC cap — the cap is a ceiling, not a target.
 - Prefer tables and code blocks over prose paragraphs for structural information (sequences, env vars, keymaps).
 - If a section has grown past its natural size, tighten it rather than splitting it into new sections.
+- **ROADMAP.md task numbers**: open tasks carry a stable `T-NNN` prefix — `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Preserve existing `T-NNN` when updating a task. Assign the next unused number when adding a new task. Completed items moved to `## Done` drop the number and use `- [x] **YYYY-MM**: <description>` instead.
 
 ---
 

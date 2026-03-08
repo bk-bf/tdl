@@ -306,14 +306,14 @@ Only write ADRs for real decisions with real reasons. Do not write ADRs for obvi
 
 ## Phase 1 — <label>
 
-- [ ] <task>
+- [ ] **T-001**: <task>
 
 ## Done
 
 (nothing yet)
 ```
 
-Derive phases and tasks from the user's description. Label phases by what they accomplish (e.g. "Harden", "Differentiate", "Publicize"), not by version numbers. Only add tasks you can genuinely derive — do not pad with generic items.
+Derive phases and tasks from the user's description. Label phases by what they accomplish (e.g. "Harden", "Differentiate", "Publicize"), not by version numbers. Open tasks carry a stable `T-NNN` prefix assigned sequentially across all phases; numbers are never reused. Only add tasks you can genuinely derive — do not pad with generic items.
 
 ### docs/BUGS.md
 
@@ -576,7 +576,7 @@ Do not begin writing files until this plan is complete. If no splits are needed,
 
 **docs/DECISIONS.md**: Find all decision rationale in existing docs — could be inline comments, a CHANGELOG, a RATIONALE file, scattered notes, or implicit in commit messages. Convert to ADR format. Renumber sequentially (ADR-001, ADR-002, ...). Only record decisions with genuine reasons; skip defaults.
 
-**docs/ROADMAP.md**: Find all TODO items, planned features, and completed items. Organise into labelled phases by theme, not version. Move completed items to `## Done` with `- [x] <YYYY-MM>: ...` format. If dates are unknown, use the current month.
+**docs/ROADMAP.md**: Find all TODO items, planned features, and completed items. Organise into labelled phases by theme, not version. Move completed items to `## Done` with `- [x] <YYYY-MM>: ...` format. Open tasks must carry a stable task number: `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Assign the next unused number when adding a new task; preserve existing numbers when migrating tasks. If dates are unknown, use the current month.
 
 **docs/BUGS.md**: Find all bug reports, issue lists, known problems. Convert to `BUG-N` format. Issues that are already fixed → `## Closed`. Issues still open → `## Open`. Serious/detailed bugs → create a stub file in `docs/bugs/BUG-N.md` and link from the index.
 
