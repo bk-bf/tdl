@@ -1,2 +1,24 @@
 nvim-treemux/lazy-lock.json
 opencode/node_modules/
+
+# ── nvim runtime (XDG_DATA/STATE/CACHE_HOME=$AID_DIR → nvim/ and treemux/) ──
+# Downloaded plugins, bytecode cache, session files, swap, shada — all runtime
+# artefacts that nvim generates under $AID_DIR/nvim/ and $AID_DIR/treemux/.
+nvim/lazy/
+nvim/luac/
+nvim/log
+nvim/sessions/
+nvim/shada/
+nvim/swap/
+treemux/
+
+# ── bun runtime ──────────────────────────────────────────────────────────────
+.bun/
+
+# ── opencode runtime ─────────────────────────────────────────────────────────
+opencode/log/
+opencode/opencode.db
+opencode/opencode.db-shm
+opencode/opencode.db-wal
+opencode/models.json
+opencode/version
