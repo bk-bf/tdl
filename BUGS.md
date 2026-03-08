@@ -23,7 +23,10 @@
 
 ### BUG-009: opencode file edits not reflected in nvim until user switches pane focus
 
-**Status**: closed — T-014 — see [bugs/BUG-009.md](bugs/BUG-009.md)
+**Status**: closed — T-014
+**Note**: `pane-focus-in` hook fires `sync.sync()` (checktime + gitsigns + nvim-tree) on every pane switch. Confirmed working: buffer reloads and gitsigns signs update within ~1s of the switch. The gitsigns update is async (manager.update is throttled); signs appear shortly after checktime completes, not instantaneously. An earlier investigation session nuked the socket by sending `--remote-send` commands directly, which caused a false "complete failure" report — the mechanism was not broken.
+
+**BUG-013 (follow-on)**: `AID_NVIM_SOCKET` was set globally (`set-environment -g`) — launching a second aid session overwrites it for all sessions; older sessions' `pane-focus-in` hooks then fire into the wrong socket. Fixed in same pass: changed to `set-environment -t "$session"` (session-local).
 
 ### BUG-007: dotfiles git repo deletes ~/.config/nvim symlink on branch operations
 

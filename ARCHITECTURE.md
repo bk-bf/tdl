@@ -195,7 +195,7 @@ sync.reload()
 | `TermClose` | `sync()` | fires when the lazygit float buffer closes |
 | explicit call after `vim.cmd("LazyGit")` | `sync()` | belt-and-suspenders for TermClose timing |
 | `BufEnter` / `CursorHold` / `CursorHoldI` | `checktime()` | buffer reload only; no sign-column redraws |
-| `pane-focus-in` tmux hook | `checktime()` | `nvim --remote-send checktime` into `AID_NVIM_SOCKET` on pane switch |
+| `pane-focus-in` tmux hook | `sync()` | `nvim --remote-send lua require("sync").sync()` into `AID_NVIM_SOCKET` on pane switch; updates gitsigns line highlights without requiring the user to physically focus nvim (T-014/BUG-009) |
 
 ### Treemux RPC (T-016)
 
