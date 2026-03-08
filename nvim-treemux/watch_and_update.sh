@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Author: Kiyoon Kim (https://github.com/kiyoon)
 #
-# CUSTOM: Source of truth is ~/Documents/Projects/special_projects/tdl/nvim-treemux/watch_and_update.sh
+# CUSTOM: Source of truth is aid/nvim-treemux/watch_and_update.sh
 # Symlinked to:
-#   ~/.config/nvim-treemux/watch_and_update.sh
 #   ~/.config/tmux/plugins/treemux/scripts/tree/watch_and_update.sh
 # After a TPM update of treemux, re-run install.sh or manually re-run the symlink commands.
 # Change from upstream: always change-root to cwd on any cd (removed child/parent/jump logic)

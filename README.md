@@ -30,7 +30,7 @@ Sessions are named `aid@<dirname>` automatically.
 
 Most Neovim setups configure the editor. aid orchestrates a full workspace.
 
-**Persistent sidebar.** The file browser is a separate, isolated `nvim` instance (`NVIM_APPNAME=nvim-treemux`). It never closes, survives editor restarts, and communicates with the main editor over a Unix socket.
+**Persistent sidebar.** The file browser is a separate, isolated `nvim` instance (`NVIM_APPNAME=treemux`). It never closes, survives editor restarts, and communicates with the main editor over a Unix socket.
 
 **AI as a first-class pane.** Opencode lives in a tmux pane, not a plugin. It persists context across file switches and can read your terminal output directly.
 
