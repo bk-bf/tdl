@@ -12,6 +12,12 @@
 
 **Status**: closed — fixed in T-015 — see [bugs/BUG-010.md](bugs/BUG-010.md)
 
+### BUG-012: bufferline truncation count `[+N]` cannot be hidden via config
+
+**Status**: open — upstream — do not fix in aid
+**Repro**: open enough tabs that bufferline overflows the available width; a `[+N]` count appears at the right edge of the tab bar indicating how many tabs are off-screen.
+**Notes**: `left_trunc_marker`/`right_trunc_marker` options control the arrow icon only — the count is hardcoded in `get_trunc_marker()` in `bufferline/ui.lua` and always renders when `count > 0`. No public option suppresses it. Per PHILOSOPHY.md §"Fixing seams that aid didn't create" — this exists regardless of aid being installed; the fix belongs upstream. Report to [akinsho/bufferline.nvim](https://github.com/akinsho/bufferline.nvim) requesting a `show_trunc_marker` / `show_trunc_count` option.
+
 <!-- template:
 ### BUG-N: title
 **Status**: open | investigating | blocked
