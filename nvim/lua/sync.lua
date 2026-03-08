@@ -11,9 +11,15 @@
 --     Reloads tmux config, nvim config, then calls sync() for state refresh.
 --
 -- sync() is triggered by:
---   • FocusGained   — nvim regains focus after any external tool
---   • TermClose     — lazygit float closes
---   • explicit call — post vim.cmd("LazyGit") in the <leader>gg keybind
+--   • FocusGained         — nvim regains focus after any external tool
+--   • BufEnter/CursorHold — belt-and-suspenders; catches cases where FocusGained
+--                           does not fire (e.g. some terminal emulators)
+--   • TermClose           — lazygit float closes
+--   • pane-focus-in hook  — tmux.conf fires `nvim --remote-send checktime` into
+--                           AID_NVIM_SOCKET on every pane switch; ensures buffers
+--                           edited externally (e.g. by opencode) reload without
+--                           requiring the user to focus the nvim pane (T-014/BUG-009)
+--   • explicit call       — post vim.cmd("LazyGit") in the <leader>gg keybind
 --
 -- Components refreshed by sync():
 --   1. nvim buffers    — checktime (reloads files changed on disk)
