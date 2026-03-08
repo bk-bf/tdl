@@ -469,15 +469,10 @@ require("lazy").setup({
       },
     },
     config = function(_, opts)
-      -- Merge .aidignore patterns into defaults.file_ignore_patterns
-      local aidignore = require("aidignore")
-      local base = { "^%.git[/\\]" }
-      for _, p in ipairs(aidignore.patterns().telescope) do
-        table.insert(base, p)
-      end
-      opts.defaults = opts.defaults or {}
-      opts.defaults.file_ignore_patterns = base
       require("telescope").setup(opts)
+      -- Apply .aidignore patterns to Telescope via the same live-update path used
+      -- by the fs_event watcher and DirChanged — keeps startup and runtime in sync.
+      require("aidignore").reset()
     end,
   },
 
@@ -776,7 +771,7 @@ vim.api.nvim_create_autocmd("DirChanged", {
   callback = function() require("aidignore").reset() end,
 })
 
--- On startup: open nvim-tree (outside tmux only) and show cheatsheet on empty buffer.
+-- On startup: open nvim-tree and show cheatsheet on empty buffer.
 -- This autocmd lives here (not inside nvim-tree's config) so it is registered
 -- before VimEnter fires regardless of when nvim-tree's lazy load triggers.
 vim.api.nvim_create_autocmd("VimEnter", {
@@ -784,11 +779,7 @@ vim.api.nvim_create_autocmd("VimEnter", {
     local is_file  = vim.fn.filereadable(data.file) == 1
     local is_empty = data.file == "" and vim.bo[data.buf].buftype == ""
     if (is_file or is_empty) and not vim.o.diff then
-      -- Outside tmux: use nvim-tree directly (in tmux, treemux sidebar is
-      -- opened by aid.sh via run-shell before nvim starts)
-      if not vim.env.TMUX or vim.env.TMUX == "" then
-        require("nvim-tree.api").tree.toggle({ focus = false, find_file = true })
-      end
+      require("nvim-tree.api").tree.toggle({ focus = false, find_file = true })
     end
     -- Open cheatsheet when launched with no file (empty buffer = fresh/restarted aid session)
     if is_empty and not vim.o.diff then
