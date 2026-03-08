@@ -405,7 +405,7 @@ require("lazy").setup({
     opts = {
       options = {
         separator_style = "thin",
-        diagnostics = "nvim_lsp",
+        diagnostics     = "nvim_lsp",
       },
       highlights = {
         fill                      = { bg = "#C88E6B" },
