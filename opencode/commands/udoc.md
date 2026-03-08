@@ -84,6 +84,25 @@ After archiving, scan the documentation for:
 
 ---
 
+## Step 6 — Resolve inferred annotations
+
+Scan all target docs for `<!-- inferred:` comments left by `/spec`:
+
+```bash
+grep -rn "<!-- inferred:" docs/
+```
+
+For each one found:
+
+1. Read the annotated content and the source file(s) that now exist to verify or refute it.
+2. **If the source confirms it**: remove the `<!-- inferred: ... -->` annotation, leaving the content as plain text.
+3. **If the source contradicts it**: correct the content to match the source, then remove the annotation.
+4. **If no source exists yet to verify it**: leave the annotation in place — do not guess. Report it in the output summary as unresolved.
+
+Do not remove an annotation without either confirming or correcting the content it marks. Removing the annotation without checking is worse than leaving it.
+
+---
+
 ## Output
 
 After completing all steps, print a short summary:
@@ -93,4 +112,8 @@ Updated: <list of files changed>
 Archived: <list of archive files written or appended to, or "none">
 LOC cap: <cap> (was: <old doc LOC> → now: <new doc LOC>)
 Pruned: <count> stale items removed
+Inferred resolved: <count> annotations confirmed and removed
+Inferred corrected: <count> annotations where content was wrong and fixed
+Inferred unresolved: <count> annotations with no source to verify against
+  [list each unresolved annotation: file:line — reason]
 ```
