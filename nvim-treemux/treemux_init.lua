@@ -9,6 +9,8 @@ if aid_dir ~= "" then
   package.path = aid_dir .. "/nvim/lua/?.lua;" .. package.path
 end
 
+local user_cfg = (os.getenv("HOME") or "") .. "/.config/aid/treemux_user.lua"
+
 -- Point nvim-tree-remote at the editor nvim's socket.
 -- aid.sh stores the socket path in the tmux server environment as AID_NVIM_SOCKET
 -- (e.g. /tmp/aid-nvim-nvim@myproject.sock) and the editor nvim is launched with
@@ -154,7 +156,6 @@ require("lazy").setup({
           -- Load user overrides if present (~/.config/aid/treemux_user.lua).
           -- This file is not part of the aid repo — users create it themselves
           -- to customise highlight groups without modifying upstream files.
-          local user_cfg = (os.getenv("HOME") or "") .. "/.config/aid/treemux_user.lua"
           local f = io.open(user_cfg, "r")
           if f then
             f:close()
