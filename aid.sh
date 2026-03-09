@@ -16,6 +16,7 @@
 # Usage:
 #   aid                       launch new session in current directory
 #   aid -a, --attach          attach to a session (interactive list, or -a <name>)
+#   aid -i, --install         (re)run install.sh — install/update plugins and symlinks
 #   aid -l, --list            list all running sessions
 #   aid -d, --debug           verbose output (set -x + step tracing)
 #   aid -h, --help            show this help
@@ -67,6 +68,7 @@ Usage:
   aid                   launch new session in current directory
   aid -a, --attach      interactive session list to attach to
   aid -a <name>         attach directly to named session
+  aid -i, --install     (re)run install.sh — install/update plugins and symlinks
   aid -l, --list        list running sessions
   aid -d, --debug       verbose output (set -x + step tracing)
   aid -h, --help        show this help
@@ -106,6 +108,9 @@ EOF
       exit 1
     fi
     exit
+    ;;
+  -i|--install)
+    exec "$AID_DIR/install.sh"
     ;;
   -*)
     echo "unknown flag: $1  (try aid --help)" >&2
