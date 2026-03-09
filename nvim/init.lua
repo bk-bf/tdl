@@ -763,7 +763,7 @@ require("lazy").setup({
     lazy = false,
     config = function()
       vim.g.tpipeline_autoembed = 1
-      vim.g.tpipeline_split     = 0   -- only use status-left; never touch status-right
+    vim.g.tpipeline_restore   = 1
     end,
   },
 

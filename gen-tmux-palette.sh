@@ -30,11 +30,11 @@ cat >"$OUT" <<EOF
 # DO NOT EDIT — regenerated from nvim/lua/palette.lua at each aid session start.
 
 set -g status-style          "bg=${blue} fg=${fg}"
-set -g status-left-length 180
+set -g status-left-length 90
 set -g status-right-length 90
 
-set -g status-left  "#(cat #{socket_path}-\#{session_id}-vimbridge) "
-set -g status-right "#[bg=${blue}]#{?#{==:#{pane_index},0},#[fg=${purple}],#[fg=${cmp_border}]}●#{?#{==:#{pane_index},1},#[fg=${purple}],#[fg=${cmp_border}]} ●#{?#{==:#{pane_index},2},#[fg=${purple}],#[fg=${cmp_border}]} ●  #[fg=${lavender}]#{pane_current_command} #[fg=${lavender}]#[fg=${fg},bg=${lavender}] %H:%M #[fg=${purple},bg=${lavender}]#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
+set -g status-left  "#[fg=${cursor_fg},bg=${purple},bold] #S #[fg=${purple},bg=${blue},none]  "
+set -g status-right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=${lavender},bg=${blue}]#[fg=${fg},bg=${lavender}] %H:%M #[fg=${purple},bg=${lavender}]#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
 
 set -g window-status-style          ""
 set -g window-status-format         ""
