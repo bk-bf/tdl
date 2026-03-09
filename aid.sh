@@ -70,7 +70,7 @@ EOF
     exit
     ;;
   -i|--install)
-    exec "$AID_DIR/install.sh"
+    exec "$AID_DIR/boot.sh"
     ;;
   -a|--attach)
     shift

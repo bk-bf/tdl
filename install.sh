@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # install.sh — set up aid on a fresh machine. Run once after cloning.
+# Always invoked via boot.sh (directly or via `aid -i`), which ensures it runs
+# from the correct install location (~/.local/share/aid by default).
 # See docs/ARCHITECTURE.md for the full isolation and symlink docs.
 
 set -euo pipefail
 
-AID="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AID="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+
 AID_CONFIG="$HOME/.config/aid"
 TPM_DIR="$AID/tmux/plugins/tpm"
 TREEMUX_DIR="$AID/tmux/plugins/treemux"
-XDG_DATA_HOME="$HOME/.local/share/aid"
-XDG_STATE_HOME="$HOME/.local/state/aid"
-XDG_CACHE_HOME="$HOME/.cache/aid"
+_XDG_DATA="$HOME/.local/share/aid"
+_XDG_STATE="$HOME/.local/state/aid"
+_XDG_CACHE="$HOME/.cache/aid"
 
-echo "==> aid install starting from $AID"
+echo "==> aid install: $AID"
 
 # ── 1. Dependencies ──────────────────────────────────────────────────────────
 # Arch/CachyOS: pynvim is required by the treemux watch script
@@ -72,14 +75,14 @@ _spin() {
 }
 
 echo "==> Bootstrapping treemux sidebar plugins (lazy sync)..."
-XDG_CONFIG_HOME="$AID_CONFIG" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" XDG_CACHE_HOME="$XDG_CACHE_HOME" \
+XDG_CONFIG_HOME="$AID_CONFIG" XDG_DATA_HOME="$_XDG_DATA" XDG_STATE_HOME="$_XDG_STATE" XDG_CACHE_HOME="$_XDG_CACHE" \
   NVIM_APPNAME=treemux nvim --headless "+Lazy! sync" +qa &
 _nvim_pid=$!
 _spin "syncing treemux plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
 
 echo "==> Bootstrapping main nvim plugins (lazy sync)..."
-XDG_CONFIG_HOME="$AID" XDG_DATA_HOME="$XDG_DATA_HOME" XDG_STATE_HOME="$XDG_STATE_HOME" XDG_CACHE_HOME="$XDG_CACHE_HOME" \
+XDG_CONFIG_HOME="$AID" XDG_DATA_HOME="$_XDG_DATA" XDG_STATE_HOME="$_XDG_STATE" XDG_CACHE_HOME="$_XDG_CACHE" \
   NVIM_APPNAME=nvim nvim --headless "+Lazy! sync" +qa &
 _nvim_pid=$!
 _spin "syncing nvim plugins…" $_nvim_pid

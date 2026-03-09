@@ -8,8 +8,12 @@ selene.toml
 nvim-treemux/lazy-lock.json
 
 # ── opencode ──────────────────────────────────────────────────────────────────
+# Source: opencode/commands/  opencode/tui.json
+# Runtime (written by opencode, not aid source):
 opencode/node_modules/
 opencode/.gitignore
+opencode/package.json
+opencode/bun.lock
 opencode/bin/
 opencode/log/
 opencode/opencode.db
