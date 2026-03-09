@@ -456,6 +456,7 @@ require("lazy").setup({
       { "<leader>q",   "<cmd>bdelete<cr>",             desc = "Close tab" },
       { "<leader>tb",  function()
           vim.o.showtabline = vim.o.showtabline == 2 and 1 or 2
+          vim.cmd("redrawtabline")
         end, desc = "Toggle tab bar" },
     },
     config = function(_, opts)
@@ -465,12 +466,12 @@ require("lazy").setup({
       -- defer_fn gives the UI time to fully initialise before redrawing.
       vim.defer_fn(function() vim.cmd("redrawtabline") end, 50)
       -- BUG-018: when files are opened from the treemux sidebar, nvim receives
-      -- a raw `:tabnew <file>` command via msgpack-RPC.  BufAdd/TabNew fire but
-      -- nvim does not re-enter its normal redraw cycle promptly after an RPC
-      -- dispatch, so bufferline's rendered tabline goes stale.  Forcing a
-      -- redrawtabline on every BufAdd/TabNew ensures the bar is always up to date
-      -- regardless of how a buffer was created (UI keypress or RPC).
-      vim.api.nvim_create_autocmd({ "BufAdd", "TabNew" }, {
+      -- a raw RPC command (tabnew / edit / buffer N).  BufAdd/TabNew fire for
+      -- genuinely new buffers/tabs, but the dedup path sends `buffer N` which
+      -- only fires BufEnter, and `edit` on an already-loaded buffer also only
+      -- fires BufEnter.  Including BufEnter covers all three code paths without
+      -- meaningful overhead — redrawtabline is cheap and idempotent.
+      vim.api.nvim_create_autocmd({ "BufAdd", "BufEnter", "TabNew" }, {
         desc     = "BUG-018: force bufferline redraw after RPC-triggered buffer/tab open",
         callback = function() vim.cmd("redrawtabline") end,
       })
