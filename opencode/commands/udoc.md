@@ -27,7 +27,7 @@ Compute the LOC cap for the document as follows:
 If the current document is already under cap, keep it that way. If it is over cap, prune it (see Step 4). Record the computed cap in a comment at the top of the document:
 
 ```
-<!-- LOC cap: <N> (source: <total source LOC>, ratio: <ratio>, updated: <YYYY-MM> -->
+<!-- LOC cap: <N> (source: <total source LOC>, ratio: <ratio>, updated: <YYYY-MM-DD> -->
 ```
 
 ---
@@ -53,7 +53,7 @@ Rules:
 - Do not pad to fill the LOC cap — the cap is a ceiling, not a target.
 - Prefer tables and code blocks over prose paragraphs for structural information (sequences, env vars, keymaps).
 - If a section has grown past its natural size, tighten it rather than splitting it into new sections.
-- **ROADMAP.md task numbers**: open tasks carry a stable `T-NNN` prefix — `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Preserve existing `T-NNN` when updating a task. Assign the next unused number when adding a new task. Completed items moved to `## Done` drop the number and use `- [x] **YYYY-MM**: <description>` instead.
+- **ROADMAP.md task numbers**: open tasks carry a stable `T-NNN` prefix — `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Preserve existing `T-NNN` when updating a task. Assign the next unused number when adding a new task. Completed items moved to `## Done` drop the number and use `- [x] **YYYY-MM-DD**: <description>` instead.
 
 ---
 
@@ -63,15 +63,15 @@ Rules:
 
 Move every item in the `## Done` section whose date is **more than 3 months ago** from `ROADMAP.md` into the archive:
 
-1. Create the archive file if it does not exist: `aid/docs/archive/ROADMAP-<YYYY-MM>.md`
-   - Header: `# Roadmap archive — items completed before <YYYY-MM>`
+1. Create the archive file if it does not exist: `aid/docs/archive/ROADMAP-<YYYY-MM-DD>.md`
+   - Header: `# Roadmap archive — items completed before <YYYY-MM-DD>`
 2. Append the extracted items verbatim to the archive file.
 3. Remove them from the `## Done` section of `ROADMAP.md`.
 4. Leave items completed within the last 3 months in `## Done` — they are still relevant context for current work.
 
 ### BUGS.md
 
-Move every item in the `## Closed` section that is **referenced nowhere in any currently open roadmap item, ADR, or open bug** into `aid/docs/archive/BUGS-<YYYY-MM>.md` following the same pattern. Closed bugs still cross-referenced by open work stay in `BUGS.md`.
+Move every item in the `## Closed` section that is **referenced nowhere in any currently open roadmap item, ADR, or open bug** into `aid/docs/archive/BUGS-<YYYY-MM-DD>.md` following the same pattern. Closed bugs still cross-referenced by open work stay in `BUGS.md`.
 
 ---
 
@@ -80,7 +80,7 @@ Move every item in the `## Closed` section that is **referenced nowhere in any c
 After archiving, scan the documentation for:
 
 - References to archived items (now gone from main docs) — remove or replace with a note: `(see archive)`
-- ADRs in `DECISIONS.md` that are marked `**Status**: Superseded` and are also referenced nowhere else — move them to `aid/docs/archive/DECISIONS-<YYYY-MM>.md` and leave a one-line stub under `## Superseded` linking to the archive file.
+- ADRs in `DECISIONS.md` that are marked `**Status**: Superseded` and are also referenced nowhere else — move them to `aid/docs/archive/DECISIONS-<YYYY-MM-DD>.md` and leave a one-line stub under `## Superseded` linking to the archive file.
 - Any ADR whose status has changed (e.g. an **Under consideration** ADR that has since been decided) — update the `**Status**` field, move it to the correct section (`## Made` or `## Superseded`), and add the `**Decision**` and `**Reason**` fields if they were absent.
 - Any wording that describes a plan, intention, or TODO that has since been implemented — replace with the factual description of the implemented behaviour.
 

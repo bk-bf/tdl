@@ -306,7 +306,7 @@ Write one ADR for each key decision already implied by the project description. 
 ```
 ### ADR-NNN: <short title>
 
-**Date**: <YYYY-MM>
+**Date**: <YYYY-MM-DD>
 **Status**: Made | Under consideration | Superseded by ADR-NNN
 **Decision**: <what was decided, in one sentence> (omit for Under consideration)
 **Reason**: <why — the constraint, trade-off, or evidence that drove it> (omit for Under consideration)
@@ -503,7 +503,7 @@ If there is no source yet, use the provisional caps from Track A Step 3.
 Add to each doc:
 
 ```
-<!-- LOC cap: <N> (source: <total>, ratio: <ratio>, updated: <YYYY-MM>) -->
+<!-- LOC cap: <N> (source: <total>, ratio: <ratio>, updated: <YYYY-MM-DD>) -->
 ```
 
 ---
@@ -531,8 +531,8 @@ When a section is extracted from a parent doc into its own file, follow these co
 | `docs/DECISIONS.md` | A single ADR that exceeds ~60 lines | `docs/decisions/ADR-NNN.md` |
 | `docs/BUGS.md` | A detailed open or closed bug | `docs/bugs/BUG-NNN.md` |
 | `docs/ARCHITECTURE.md` | A major subsystem with its own data flow, API, or lifecycle | `docs/architecture/<subsystem>.md` |
-| `docs/ROADMAP.md` | A completed phase or large done-block being archived | `docs/archive/ROADMAP-<YYYY-MM>.md` |
-| Any doc | Archive-destined content (old ADRs, closed bugs) | `docs/archive/<TYPE>-<YYYY-MM>.md` |
+| `docs/ROADMAP.md` | A completed phase or large done-block being archived | `docs/archive/ROADMAP-<YYYY-MM-DD>.md` |
+| Any doc | Archive-destined content (old ADRs, closed bugs) | `docs/archive/<TYPE>-<YYYY-MM-DD>.md` |
 
 If a directory implied by the target path does not exist, create it with a `.gitkeep`.
 
@@ -587,7 +587,7 @@ Do not begin writing files until this plan is complete. If no splits are needed,
 - **Fill genuine gaps** — if a standard section is missing and you can derive its content from source files, write it. If you cannot, omit the heading.
 - **Do not discard unclassified content** — if existing content doesn't fit a standard file, place it in the most appropriate file with a note, or create a justified optional file. Flag it in the output summary.
 - **Resolve duplication** — if the same information appears in multiple existing files, keep the most accurate/complete version in the canonical location and remove the others.
-- **Apply standard formats**: ADR format for decisions, `BUG-N` format for bugs, `- [x] YYYY-MM: ...` for done roadmap items.
+- **Apply standard formats**: ADR format for decisions, `BUG-N` format for bugs, `- [x] YYYY-MM-DD: ...` for done roadmap items.
 - Do not use emoji.
 
 ### Handling each standard file
@@ -600,7 +600,7 @@ Do not begin writing files until this plan is complete. If no splits are needed,
 
 **docs/DECISIONS.md**: Find all decision rationale in existing docs — could be inline comments, a CHANGELOG, a RATIONALE file, scattered notes, or implicit in commit messages. Convert to ADR format. Renumber sequentially (ADR-001, ADR-002, ...). Place each ADR under the correct section header (`## Under Consideration`, `## Made`, or `## Superseded`). The `**Status**` field is required on every ADR. Only record decisions with genuine reasons; skip defaults.
 
-**docs/ROADMAP.md**: Find all TODO items, planned features, and completed items. Organise into labelled phases by theme, not version. Move completed items to `## Done` with `- [x] <YYYY-MM>: ...` format. Open tasks must carry a stable task number: `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Assign the next unused number when adding a new task; preserve existing numbers when migrating tasks. If dates are unknown, use the current month.
+**docs/ROADMAP.md**: Find all TODO items, planned features, and completed items. Organise into labelled phases by theme, not version. Move completed items to `## Done` with `- [x] <YYYY-MM-DD>: ...` format. Open tasks must carry a stable task number: `- [ ] **T-NNN**: <description>`. Numbers are assigned sequentially across all phases and never reused. Assign the next unused number when adding a new task; preserve existing numbers when migrating tasks. If dates are unknown, use the current date.
 
 **docs/BUGS.md**: Find all bug reports, issue lists, known problems. Convert to `BUG-N` format. Issues that are already fixed → `## Closed`. Issues still open → `## Open`. Serious/detailed bugs → create a stub file in `docs/bugs/BUG-N.md` and link from the index.
 
