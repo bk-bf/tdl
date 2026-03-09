@@ -65,26 +65,26 @@
 
 ## Done
 
-- [x] **2026-03**: T-007 — self-contained theme system; palette centralized in `nvim/lua/palette.lua`; bufferline, statusline, treemux highlights, and tmux status bar all driven from single source; `tokyonight` dependency removed from treemux; `gen-tmux-palette.sh` renders tmux colors at session start
-- [x] **2026-03**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?) — audit complete; revealed BUG-011 (Telescope patterns frozen at startup, not live-updated); fix tracked as T-021
-- [x] **2026-03**: T-014 / BUG-009 — opencode file edits not visible in nvim until focus switch; `vim.uv.new_fs_event` watcher per open buffer's directory (`sync.watch_buf()`); BUG-013 fixed: `AID_NVIM_SOCKET` scoped per-session; `pane-focus-in` hook upgraded to `sync.sync()`
-- [x] **2026-03**: T-021 / BUG-011 — `.aidignore` changes not reflected in Telescope until nvim restart; `_apply_to_telescope()` added to `aidignore.lua`
-- [x] **2026-03**: T-013 / BUG-007 — eliminate `~/.config/nvim-tdl` symlink; replace with `XDG_CONFIG_HOME` override at nvim launch time
-- [x] **2026-03**: T-020 / ADR-013 — sidebar architecture decided: treemux stays
-- [x] **2026-03**: T-015 / BUG-010 — opening an already-open file from sidebar creates duplicate tab; `_remote_bufnr()` dedup check added
-- [x] **2026-03**: T-016 / T-006 / BUG-008 — treemux bottom bar flicker + editor line-number bleed eliminated; `send-keys` replaced with direct msgpack-RPC
-- [x] **2026-03**: T-001 — replace `sleep 1.5` with poll loop in `aid.sh`
-- [x] **2026-03**: T-002 — complete `tdl` → `aid` rename across the backend
-- [x] **2026-03**: Fix GIT_DIR env leak after lazygit closes (BUG-006)
-- [x] **2026-03**: Fix lazygit `--git-dir` worktree detection
-- [x] **2026-03**: `.aidignore` live reload via `vim.uv` fs_event watcher
-- [x] **2026-03**: Sidebar nvim shares `aidignore.lua` via `package.path`
-- [x] **2026-03**: Session naming `aid@<dirname>`; treemux sidebar width 26 cols; cheatsheet simplified
-- [x] **2026-03**: BUG-003 fix — opencode launched via `split-window` direct arg
-- [x] **2026-03**: POSIX CLI flags — `-a`/`--attach`, `-l`/`--list`, `-h`/`--help`, `-d`/`--debug`
-- [x] **2026-03**: Stable pane IDs; editor pane restart loop; full environment isolation
-- [x] **2026-03**: Move nvim config into aid repo; default install path `~/.local/share/aid`
-- [x] **2026-03**: Fix cheatsheet bugs (VimEnter timing, gmatch crash, restore on last file close, line numbers after dismiss)
-- [x] **2026-03**: Fix bufferline not rendering on startup; add gitsigns `numhl`; disable spell by default
-- [x] **2026-03**: Add opencode custom commands (`commit.md`, `udoc.md`); README gif/screenshot; expand nvim config docs
+- [x] **2026-03-09**: T-007 — self-contained theme system; palette centralized in `nvim/lua/palette.lua`; bufferline, statusline, treemux highlights, and tmux status bar all driven from single source; `tokyonight` dependency removed from treemux; `gen-tmux-palette.sh` renders tmux colors at session start
+- [x] **2026-03-09**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?) — audit complete; revealed BUG-011 (Telescope patterns frozen at startup, not live-updated); fix tracked as T-021
+- [x] **2026-03-09**: T-014 / BUG-009 — opencode file edits not visible in nvim until focus switch; `vim.uv.new_fs_event` watcher per open buffer's directory (`sync.watch_buf()`); BUG-013 fixed: `AID_NVIM_SOCKET` scoped per-session; `pane-focus-in` hook upgraded to `sync.sync()`
+- [x] **2026-03-09**: T-021 / BUG-011 — `.aidignore` changes not reflected in Telescope until nvim restart; `_apply_to_telescope()` added to `aidignore.lua`
+- [x] **2026-03-09**: T-013 / BUG-007 — eliminate `~/.config/nvim-tdl` symlink; replace with `XDG_CONFIG_HOME` override at nvim launch time
+- [x] **2026-03-09**: T-020 / ADR-013 — sidebar architecture decided: treemux stays
+- [x] **2026-03-09**: T-015 / BUG-010 — opening an already-open file from sidebar creates duplicate tab; `_remote_bufnr()` dedup check added
+- [x] **2026-03-09**: T-016 / T-006 / BUG-008 — treemux bottom bar flicker + editor line-number bleed eliminated; `send-keys` replaced with direct msgpack-RPC
+- [x] **2026-03-09**: T-001 — replace `sleep 1.5` with poll loop in `aid.sh`
+- [x] **2026-03-09**: T-002 — complete `tdl` → `aid` rename across the backend
+- [x] **2026-03-09**: Fix GIT_DIR env leak after lazygit closes (BUG-006)
+- [x] **2026-03-09**: Fix lazygit `--git-dir` worktree detection
+- [x] **2026-03-09**: `.aidignore` live reload via `vim.uv` fs_event watcher
+- [x] **2026-03-09**: Sidebar nvim shares `aidignore.lua` via `package.path`
+- [x] **2026-03-09**: Session naming `aid@<dirname>`; treemux sidebar width 26 cols; cheatsheet simplified
+- [x] **2026-03-09**: BUG-003 fix — opencode launched via `split-window` direct arg
+- [x] **2026-03-09**: POSIX CLI flags — `-a`/`--attach`, `-l`/`--list`, `-h`/`--help`, `-d`/`--debug`
+- [x] **2026-03-09**: Stable pane IDs; editor pane restart loop; full environment isolation
+- [x] **2026-03-09**: Move nvim config into aid repo; default install path `~/.local/share/aid`
+- [x] **2026-03-09**: Fix cheatsheet bugs (VimEnter timing, gmatch crash, restore on last file close, line numbers after dismiss)
+- [x] **2026-03-09**: Fix bufferline not rendering on startup; add gitsigns `numhl`; disable spell by default
+- [x] **2026-03-09**: Add opencode custom commands (`commit.md`, `udoc.md`); README gif/screenshot; expand nvim config docs
 

@@ -7,7 +7,7 @@ ADR statuses:
 - **Made** — decided and implemented
 - **Superseded** — previously made, overridden by a later ADR (kept for historical record)
 
-Archived ADRs (superseded and no longer referenced by active work) are in `archive/DECISIONS-2026-03.md`.
+Archived ADRs (superseded and no longer referenced by active work) are in `archive/DECISIONS-2026-03-09.md`.
 
 ---
 
@@ -23,12 +23,12 @@ Archived ADRs (superseded and no longer referenced by active work) are in `archi
 
 ### ADR-013: Sidebar architecture — treemux stays
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Status**: Made — treemux is the permanent architecture; question closed
 
 **Decision**: Keep treemux. The file tree sidebar remains a separate tmux pane running its own nvim process (`NVIM_APPNAME=treemux`). The layout is three tmux panes: treemux sidebar (left) | editor (middle) | opencode (right). The architecture cost is accepted.
 
-**Trial conducted (T-020, then reverted 2026-03)**:
+**Trial conducted (T-020, then reverted 2026-03-09)**:
 The alternative — nvim-tree inside main nvim — was implemented and reverted. Three structural problems were confirmed as not fixable without deeper surgery than the simplification was worth:
 
 1. **Terminal bleed**: any tmux split (`M-v`, `M-h`) from the editor pane produces a new pane containing the full nvim process — nvim-tree column included. The treemux sidebar is a separate tmux pane; no nvim window can visually touch it.
@@ -43,7 +43,7 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 ### ADR-001: Install path `~/.local/share/aid`
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: Default install to `~/.local/share/aid`, override with `AID_DIR`.
 **Reason**: XDG Base Directory spec — `~/.local/share` is the correct location for user-installed application data (scripts, plugins, runtime files). Previous default `~/Documents/Projects/special_projects/tdl` was personal/idiosyncratic.
 
@@ -51,7 +51,7 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 ### ADR-002: Orphan `dev-docs` branch for private documentation
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: Keep architecture, roadmap, bugs, and decisions in an orphan `dev-docs` branch with a git worktree at `aid/docs/`. Never merge into `master` or any code branch.
 **Reason**: Documentation must be markdown + version-controlled for LLM-driven workflow, but should not be cloned by users running `boot.sh`. A separate private repo adds context-switching overhead; an orphan branch with a worktree gives file-system access without contaminating the public install.
 
@@ -59,7 +59,7 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 ### ADR-005: `--git-dir` not `--git-common-dir` for lazygit worktree detection
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: The `<leader>gg` keybind uses `git rev-parse --git-dir` to resolve `GIT_DIR`, not `--git-common-dir`.
 **Reason**: `--git-common-dir` returns the bare repo root (e.g. `aid/`). When set as `GIT_DIR` with `GIT_WORK_TREE=aid/main/`, git treats the bare root as the work-tree and sees all committed files as deleted + all files in `main/` as untracked. `--git-dir` returns the worktree-specific path (e.g. `aid/worktrees/main`) which correctly scopes the index to the checked-out branch, giving lazygit a clean view.
 
@@ -67,7 +67,7 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 
 ### ADR-006: Full environment isolation
 
-**Date**: 2026-03 (extended 2026-03)
+**Date**: 2026-03-09 (extended 2026-03-09)
 **Decision**: aid must not conflict with the user's existing nvim or tmux setup. All runtime state is isolated:
 
 - **tmux server**: dedicated socket `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses all user tmux configs; `~/.config/tmux/` is never touched
@@ -78,15 +78,15 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 - **install.sh**: does not inject into any user config file; only writes `~/.config/aid/treemux` (symlink) and `~/.local/bin/aid` (symlink)
 - **All scripts** (`ensure_treemux.sh`, `sync.lua`): use `tmux -L aid` for every tmux command
 
-**Extension rationale (2026-03)**: The original decision only set `XDG_CONFIG_HOME`, leaving `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` unset. This caused nvim to write plugin data, state (shada/swap/undo), and cache into `~/.local/share/nvim/`, `~/.local/state/nvim/`, and `~/.cache/nvim/` — violating the isolation guarantee. A second attempt set all four dirs to `$AID_DIR`, which moved the artefacts inside the source tree instead. The correct fix is `XDG_CONFIG_HOME=$AID_DIR` (config source) and the remaining three dirs pointing to `~/.local/share/aid`, `~/.local/state/aid`, `~/.cache/aid` — standard XDG locations under an aid-specific namespace. TPM and the treemux plugin were also relocated from `~/.config/tmux/plugins/` to `$AID_DIR/tmux/plugins/`.
+**Extension rationale (2026-03-09)**: The original decision only set `XDG_CONFIG_HOME`, leaving `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` unset. This caused nvim to write plugin data, state (shada/swap/undo), and cache into `~/.local/share/nvim/`, `~/.local/state/nvim/`, and `~/.cache/nvim/` — violating the isolation guarantee. A second attempt set all four dirs to `$AID_DIR`, which moved the artefacts inside the source tree instead. The correct fix is `XDG_CONFIG_HOME=$AID_DIR` (config source) and the remaining three dirs pointing to `~/.local/share/aid`, `~/.local/state/aid`, `~/.cache/aid` — standard XDG locations under an aid-specific namespace. TPM and the treemux plugin were also relocated from `~/.config/tmux/plugins/` to `$AID_DIR/tmux/plugins/`.
 
-**Supersedes**: ADR-003, ADR-004 (see `archive/DECISIONS-2026-03.md`).
+**Supersedes**: ADR-003, ADR-004 (see `archive/DECISIONS-2026-03-09.md`).
 
 ---
 
 ### ADR-007: OPTIONS block must be at the top of `init.lua`
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: The `vim.opt.*` global options block (line numbers, sign column, tab settings, etc.) is placed at the very top of `init.lua` — immediately after leader key and netrw disable — before any `require()`, plugin setup, or `vim.api.nvim_create_autocmd()` call.
 
 **Reason**: Neovim evaluates `init.lua` top-to-bottom. Autocmds registered with `vim.api.nvim_create_autocmd` capture a reference to the option at registration time only if they read it directly. More subtly: window-local option inheritance (`setlocal x<`) falls back to the *global* option (`vim.o.x`) at the moment the `setlocal x<` command executes — not to the value that will be set later in the file.
@@ -108,7 +108,7 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 ### ADR-008: `.aidignore` live reload via `explorer.filters.ignore_list` mutation
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: Live-updating nvim-tree filters when `.aidignore` changes is done by mutating `require("nvim-tree.core").get_explorer().filters.ignore_list` in-place, then calling `api.tree.reload()`. No `setup()` re-call.
 
 **Reason**: `nvim-tree.setup()` is not safe to call on a live tree — it calls `purge_all_state()` internally, which destroys the window/explorer (visible as a blank pane). The `ignore_list` field is a `table<string, boolean>` read on every `should_filter()` invocation inside nvim-tree's render loop. Mutating it in-place causes the next `reload()` to use the updated patterns with zero visual disruption — no window close/reopen, cursor preserved.
@@ -125,7 +125,7 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 ### ADR-009: Shared `package.path` for sidebar nvim via `AID_DIR/nvim/lua`
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: `treemux_init.lua` prepends `AID_DIR/nvim/lua` to `package.path` at the top of the file, before any `require()`. This allows `require("aidignore")` (and other main-nvim modules) to work in the sidebar nvim without duplicating code.
 
 **Reason**: The sidebar nvim (`NVIM_APPNAME=treemux`) is an isolated process with its own config directory. Shared Lua modules like `aidignore.lua` live in `nvim/lua/` under the main nvim config. Without the `package.path` addition, `require("aidignore")` in `treemux_init.lua` fails with `module not found`.
@@ -140,7 +140,7 @@ Placing the OPTIONS block last (or after `lazy.setup()`) meant that:
 
 ### ADR-010: `tmux.conf` default keybinds
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: `aid/tmux.conf` ships two categories of keybinds beyond the essential (reload, sidebar toggle, mouse):
 
 1. **Pane navigation** (`M-Left/Right/Up/Down`, `C-h/j/k/l`, no prefix) — shipped as defaults.
@@ -154,7 +154,7 @@ The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim c
 
 ### ADR-011: `XDG_CONFIG_HOME=~/.config/aid` for centralised nvim config
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: `aid.sh` sets `XDG_CONFIG_HOME=$HOME/.config/aid` in the tmux server environment. Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (sidebar), nvim resolves config paths to `~/.config/aid/nvim` and `~/.config/aid/treemux`. Both are symlinks into the repo created by `install.sh`. The user's `~/.config/nvim` is never touched.
 
 **Reason**: `NVIM_APPNAME` alone can only be a single path component — it cannot produce nested paths like `~/.config/aid/nvim`. The only way to get everything under a single `~/.config/aid/` root is to redirect `XDG_CONFIG_HOME`. Setting it in the tmux server environment (via `tmux set-environment -g`) means every process spawned inside an aid session inherits it automatically — including nvim invocations from shell prompts, not just the respawn-pane loop.
@@ -169,7 +169,7 @@ The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim c
 
 ### ADR-012: User nvim and tmux config in `~/.config/aid` — intentionally separate from system config
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Decision**: Users who want to customise nvim or tmux behaviour within aid must edit files under `~/.config/aid/` (which are symlinks back into the repo). There is no mechanism to layer a user's existing `~/.config/nvim` or `~/.config/tmux/.tmux.conf` into aid's environment.
 
 **Reason**: The scope of safely merging arbitrary user nvim configs (plugins, autocmds, LSP setups, colorschemes) or tmux configs (key bindings, plugins, hooks) with aid's own config without breaking aid's functionality is large and undefined. Aid's nvim config depends on specific plugin load order, specific keybinds, and specific autocmds. A user's config could silently override any of these. Until aid has a defined extension/override API, the correct default is full isolation. Users are informed of this tradeoff in the README.
@@ -180,7 +180,7 @@ The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim c
 
 ### ADR-014: `tmux/plugins/` lives inside `AID_DIR`, not `XDG_DATA_HOME`
 
-**Date**: 2026-03
+**Date**: 2026-03-09
 **Status**: Made — current behaviour; low-priority candidate for revisiting
 
 **Decision**: TPM and all tmux plugins are cloned into `$AID_DIR/tmux/plugins/` (inside the repo) rather than `$XDG_DATA_HOME/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/`).
@@ -199,4 +199,4 @@ ADRs in this section were previously made but overridden by a later decision. Ke
 
 ### ADR-003, ADR-004: Earlier isolation model
 
-Superseded by ADR-006. Full text in `archive/DECISIONS-2026-03.md`.
+Superseded by ADR-006. Full text in `archive/DECISIONS-2026-03-09.md`.

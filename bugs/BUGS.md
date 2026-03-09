@@ -34,23 +34,23 @@
 
 ### BUG-020: markdown-preview opens Firefox instead of default browser; writes mozilla/ into repo
 
-**Status**: closed — fixed 2026-03 — see [archive/BUG-020.md](archive/BUG-020.md)
+**Status**: closed — fixed 2026-03-09 — see [archive/BUG-020.md](archive/BUG-020.md)
 
 ### BUG-019: .aidignore plain names hide files whose names contain the pattern as a substring
 
-**Status**: closed — fixed 2026-03 — see [archive/BUG-019.md](archive/BUG-019.md)
+**Status**: closed — fixed 2026-03-09 — see [archive/BUG-019.md](archive/BUG-019.md)
 
 ### BUG-014: pressing Tab in treemux sidebar opens file inside sidebar pane
 
-**Status**: closed — fixed 2026-03 — see [archive/BUG-014.md](archive/BUG-014.md)
+**Status**: closed — fixed 2026-03-09 — see [archive/BUG-014.md](archive/BUG-014.md)
 
 ### BUG-017: prefix+Tab does not reopen the sidebar after it is closed
 
-**Status**: closed — fixed 2026-03 — see [archive/BUG-017.md](archive/BUG-017.md)
+**Status**: closed — fixed 2026-03-09 — see [archive/BUG-017.md](archive/BUG-017.md)
 
 ### BUG-016: saving .aidignore freezes/crashes the sidebar nvim
 
-**Status**: closed — fixed 2026-03 — see [archive/BUG-016.md](archive/BUG-016.md)
+**Status**: closed — fixed 2026-03-09 — see [archive/BUG-016.md](archive/BUG-016.md)
 
 ### BUG-009: opencode file edits not reflected in nvim until user switches pane focus
 
@@ -89,4 +89,4 @@
 **Root cause**: `send-keys` typed the command into a live shell prompt — the command was visible during shell startup latency.
 **Fix**: pass the command directly to `split-window` as an argument so the pane spawns straight into the process with no intermediate prompt or visible keystrokes.
 
-*(BUG-005, BUG-001, BUG-002 moved to [archive/BUGS-2026-03.md](archive/BUGS-2026-03.md))*
+*(BUG-005, BUG-001, BUG-002 moved to [archive/BUGS-2026-03-09.md](archive/BUGS-2026-03-09.md))*
