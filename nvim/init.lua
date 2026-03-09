@@ -1107,12 +1107,19 @@ vim.api.nvim_create_autocmd("VimLeave", {
   callback = function() sync.stop_watchers() end,
 })
 
--- Re-apply palette after any event that can reset highlight groups:
---   ColorScheme  — colorscheme load/reload wipes all hl groups
---   LspAttach    — some LSP servers set highlight groups on attach
--- This makes the bufferline theme bleed-immune regardless of trigger (BUG-021).
-vim.api.nvim_create_autocmd({ "ColorScheme", "LspAttach" }, {
-  desc = "BUG-021: re-apply palette after hl-group-resetting events",
+-- Re-apply palette after any event that can reset highlight groups.
+-- ColorScheme fires when a colorscheme is loaded/reloaded and wipes all hl groups.
+-- LspAttach is intentionally NOT used here — it fires per-buffer during the LSP
+-- attach sequence and calling apply_palette() mid-attach disrupts LSP startup.
+-- Instead, a one-time deferred call after VimEnter covers the post-startup window
+-- where LSP servers first attach and can overwrite hl groups (BUG-021).
+vim.api.nvim_create_autocmd("ColorScheme", {
+  desc = "BUG-021: re-apply palette after colorscheme resets hl groups",
   callback = function() apply_palette() end,
+})
+vim.api.nvim_create_autocmd("VimEnter", {
+  once = true,
+  desc = "BUG-021: re-apply palette once after all plugins and LSP servers have initialised",
+  callback = function() vim.defer_fn(apply_palette, 500) end,
 })
 
