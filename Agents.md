@@ -4,6 +4,7 @@
 
 - **Never commit or push to git unprompted.** Always wait for the user to explicitly ask, or for a slash command (e.g. `/commit`) to trigger it. This applies even when completing a large task — finish all code changes, then stop and wait. The user may have staged changes of their own that must not be conflated into your commit.
 - **Roadmap task references**: open tasks in `docs/ROADMAP.md` are numbered `T-NNN` (e.g. `T-002`). When referencing a roadmap item in code comments, ADRs, bug notes, or commit messages, use the task number, not a description.
+- **Date format**: always use `YYYY-MM-DD` (e.g. `2026-03-09`). Never use `YYYY-MM` alone. This applies everywhere: ADR `**Date**` fields, bug report `**First appeared**` / `**Fixed**` fields, roadmap `## Done` entries (`- [x] **YYYY-MM-DD**: ...`), LOC cap `updated:` comments, and archive filenames (`BUGS-YYYY-MM-DD.md`, `DECISIONS-YYYY-MM-DD.md`).
 
 ## What this repo is
 
