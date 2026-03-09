@@ -152,9 +152,6 @@ To add initialization options or disable a server, edit opencode.json directly.
 Docs: https://opencode.ai/docs/lsp/
 ```
 
-For Lua projects: selene requires a `vim.yml` alongside `selene.toml` in the project root.
-Aid ships one at `$HOME/.local/share/aid/main/vim.yml` — copy it into your project root if needed.
-
 ---
 
 # Diagnose mode
