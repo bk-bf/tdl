@@ -636,6 +636,27 @@ require("lazy").setup({
     "iamcco/markdown-preview.nvim",
     build = "cd app && npm install && git restore .",
     ft = { "markdown" },
+    init = function()
+      -- aid sets XDG_CONFIG_HOME=$AID_DIR so nvim finds its config. The node
+      -- server inherits that env, and any browser it spawns (directly or via
+      -- xdg-open) also inherits it — causing Firefox/Zen to write profiles to
+      -- $XDG_CONFIG_HOME/mozilla/ (i.e. inside the repo) instead of ~/.mozilla.
+      -- Fix: use a browserfunc that strips the aid XDG overrides before opening,
+      -- so the browser sees the real user XDG dirs.
+      vim.g.mkdp_browserfunc = "MkdpOpenBrowser"
+      vim.cmd([[
+        function! MkdpOpenBrowser(url) abort
+          call jobstart([
+            \ 'env',
+            \ '-u', 'XDG_CONFIG_HOME',
+            \ '-u', 'XDG_DATA_HOME',
+            \ '-u', 'XDG_STATE_HOME',
+            \ '-u', 'XDG_CACHE_HOME',
+            \ 'xdg-open', a:url
+            \ ])
+        endfunction
+      ]])
+    end,
     keys = {
       { "<leader>mp", function()
           vim.cmd("MarkdownPreview")
