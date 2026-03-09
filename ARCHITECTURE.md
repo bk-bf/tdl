@@ -1,4 +1,4 @@
-<!-- LOC cap: 425 (source: 3037, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 427 (source: 3052, ratio: 0.14, updated: 2026-03-09) -->
 # Architecture
 
 ## Overview
@@ -163,6 +163,8 @@ The load order within `init.lua` is intentional and must be preserved:
 8. KEYMAPS              — vim.keymap.set() calls (reference sync, _cs_open, etc.)
 9. PLUGINS              — require("lazy").setup({...})
                           includes: persistence.nvim for session save/restore
+                          includes: nvim-cmp (autocompletion), mason + mason-lspconfig,
+                          nvim-lspconfig, conform.nvim (format on save), nvim-lint
 10. APPEARANCE          — _G.apply_palette(): nvim_set_hl for all groups + guicursor
 11. DIAGNOSTICS         — vim.diagnostic.config()
 12. AUTOCMDS            — FileType, FocusGained, TermClose, DirChanged, VimEnter
@@ -175,6 +177,24 @@ The `VimEnter` autocmd (opens nvim-tree outside tmux; opens cheatsheet on empty 
 `nvim/cheatsheet.md` is opened as a normal file buffer (`vim.cmd("edit " .. path)`) when nvim starts with no file argument. No special read-only styling, no buffer tracking, no window-option autocmds — just a plain `edit`. Re-open at any time with `<leader>?`. Dismissed by opening any other file; no auto-restore logic.
 
 The path is built from `AID_DIR` (env, real path) rather than `stdpath("config")` (symlink) to avoid W13 "file created after editing started" on writes.
+
+## Autocompletion (`nvim-cmp`)
+
+`hrsh7th/nvim-cmp` provides the completion popup. It is configured to auto-show on every keypress (`completeopt = "menu,menuone,noinsert"`) — no manual trigger required. Keymaps: `<Tab>`/`<S-Tab>` navigate the list, `<CR>` confirms, `<C-e>` aborts, `<C-Space>` forces the popup open, `<C-d>`/`<C-u>` scroll the docs window.
+
+Sources (in priority order):
+
+| Source | Plugin | What it provides |
+|---|---|---|
+| `nvim_lsp` | `cmp-nvim-lsp` | Completions from attached LSP servers (symbols, methods, fields) |
+| `nvim_lsp_signature_help` | `cmp-nvim-lsp-signature-help` | Function parameter hints shown inline while typing inside a call |
+| `snippets` | `garymjr/nvim-snippets` | Snippet expansion via `vim.snippet` (nvim 0.10+ built-in engine) |
+| `buffer` | `cmp-buffer` | Words from the current buffer |
+| `path` | `cmp-path` | Filesystem path completions |
+
+LSP capabilities (`cmp_nvim_lsp.default_capabilities()`) are passed to all servers via `nvim-lspconfig`'s `LspAttach` autocmd — this tells each LSP server that the client supports snippet insertText and other completion features, enabling richer results.
+
+No LSP servers are pre-installed. Users install them via `:Mason`; `mason-lspconfig` with `automatic_enable = true` bridges any installed server to lspconfig automatically.
 
 ## Git-sync coordinator (`nvim/lua/sync.lua`)
 
