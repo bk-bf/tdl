@@ -21,42 +21,32 @@ description: Wire Mason LSP binaries into opencode.json (no args), or check and 
 
 ---
 
-## Mode detection
+## Mode detection — run this first, then jump immediately to the correct section
 
-Check `$ARGUMENTS`:
+**Do not read further until you have evaluated these conditions in order.**
 
-- **`$ARGUMENTS` is non-empty** → **Diagnose mode** for the specific file given. Skip to [Diagnose mode](#diagnose-mode).
-- **`$ARGUMENTS` is empty** → read `opencode.json` and check whether an `"lsp"` key exists with at least one entry:
-  - **No `lsp` key / bare schema** → **Setup mode**. Continue to [Setup mode](#setup-mode).
-  - **`lsp` key present and populated** → **Diagnose mode** for all source files. Skip to [Diagnose mode](#diagnose-mode).
+**If `$ARGUMENTS` is non-empty:**
+→ Go directly to [Diagnose mode](#diagnose-mode). Do not read Setup mode. Do not check opencode.json.
+
+**If `$ARGUMENTS` is empty:**
+→ Read `opencode.json` in the current working directory.
+  - If it contains an `"lsp"` key with at least one entry that is not `{}`:
+    → Go directly to [Diagnose mode](#diagnose-mode). Do not read Setup mode.
+  - Otherwise (no `"lsp"` key, or `"lsp"` is `{}`):
+    → Go directly to [Setup mode](#setup-mode). Do not read Diagnose mode.
+
+**Stop reading here. Jump to the correct section now.**
 
 ---
 
 # Setup mode
 
-Sync the `lsp` section of `opencode.json` with the LSP servers currently installed in Mason.
+You are here because `$ARGUMENTS` is empty and `opencode.json` has no populated `lsp` key.
+Goal: discover Mason-installed LSP binaries and write them into `opencode.json`.
 
 ---
 
-## Step 1 — Check if opencode.json already has LSP config
-
-Read `opencode.json` in the current working directory (it was bootstrapped there by aid on first launch).
-
-If the file contains an `"lsp"` key with at least one entry that is not `{}`, print:
-
-```
-opencode.json already has LSP config — not overwriting.
-Edit opencode.json directly to change LSP settings.
-Docs: https://opencode.ai/docs/lsp/
-```
-
-Then stop. Do not modify the file.
-
-If the `"lsp"` key is absent, is `{}`, or the file is just `{ "$schema": "..." }`, proceed to Step 2.
-
----
-
-## Step 2 — Discover Mason-installed LSP servers
+## Step 1 — Discover Mason-installed LSP servers
 
 Run:
 
@@ -68,29 +58,29 @@ Collect the list of binary names. Ignore non-LSP tools: `stylua`, `selene`, `pre
 
 For each LSP binary found, resolve the opencode server key using this mapping table:
 
-| Mason binary name        | OpenCode server key  |
-|--------------------------|----------------------|
-| `lua-language-server`    | `lua-ls`             |
-| `gopls`                  | `gopls`              |
-| `pyright`                | `pyright`            |
-| `rust-analyzer`          | `rust`               |
-| `typescript-language-server` | `typescript`     |
-| `bash-language-server`   | `bash`               |
-| `yaml-language-server`   | `yaml-ls`            |
-| `clangd`                 | `clangd`             |
-| `zls`                    | `zls`                |
-| `nixd`                   | `nixd`               |
-| `kotlin-language-server` | `kotlin-ls`          |
-| `jdtls`                  | `jdtls`              |
-| `dartls`                 | `dart`               |
-| `ocamllsp`               | `ocaml-lsp`          |
-| `gleam`                  | `gleam`              |
+| Mason binary name             | OpenCode server key |
+|-------------------------------|---------------------|
+| `lua-language-server`         | `lua-ls`            |
+| `gopls`                       | `gopls`             |
+| `pyright`                     | `pyright`           |
+| `rust-analyzer`               | `rust`              |
+| `typescript-language-server`  | `typescript`        |
+| `bash-language-server`        | `bash`              |
+| `yaml-language-server`        | `yaml-ls`           |
+| `clangd`                      | `clangd`            |
+| `zls`                         | `zls`               |
+| `nixd`                        | `nixd`              |
+| `kotlin-language-server`      | `kotlin-ls`         |
+| `jdtls`                       | `jdtls`             |
+| `dartls`                      | `dart`              |
+| `ocamllsp`                    | `ocaml-lsp`         |
+| `gleam`                       | `gleam`             |
 
-If a binary name is not in the table above and is not in the ignore list, include it as-is (binary name = opencode key) — it may be a custom or less common LSP.
+If a binary name is not in the table above and is not in the ignore list, include it as-is (binary name = opencode key).
 
 ---
 
-## Step 3 — Build the resolved binary paths
+## Step 2 — Build the resolved binary paths
 
 For each matched LSP, the full path is:
 
@@ -108,7 +98,7 @@ Only include entries where the binary is confirmed present.
 
 ---
 
-## Step 4 — Write opencode.json
+## Step 3 — Write opencode.json
 
 If no LSP binaries were found after filtering, print:
 
@@ -150,7 +140,7 @@ Use the real expanded path (not `~` or `$HOME`) so the value is unambiguous.
 
 ---
 
-## Step 5 — Print summary
+## Step 4 — Print summary
 
 ```
 Configured <N> LSP server(s) in opencode.json:
@@ -166,7 +156,8 @@ Docs: https://opencode.ai/docs/lsp/
 
 # Diagnose mode
 
-Check LSP diagnostics for a specific file (if `$ARGUMENTS` is set) or all source files in the project (if `$ARGUMENTS` is empty and `opencode.json` already has LSP config). Show all diagnostics, then offer to fix them.
+You are here because either `$ARGUMENTS` is non-empty (specific file), or `$ARGUMENTS` is empty and `opencode.json` already has LSP config (all files).
+Goal: collect LSP diagnostics, show them, and offer to fix errors and warnings.
 
 ---
 
