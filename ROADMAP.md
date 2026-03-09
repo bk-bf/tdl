@@ -3,7 +3,6 @@
 ## Phase 1 — Harden (fix before any promotion)
 
 - [ ] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
-- [x] **T-023 / BUG-014**: `<Tab>` in treemux sidebar opens file inside sidebar pane — fixed: `<Tab>` remapped to `<Nop>` in `treemux_init.lua` after plugin setup
 - [ ] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
 
   **Full dependency audit:**
@@ -61,10 +60,11 @@
 - [ ] **T-012**: Consider `main` + feature-branches workflow (currently single `master`)
 - [ ] **T-018**: Allow `~/.config/opencode/` passthrough — currently `OPENCODE_CONFIG_DIR` is always set to `$AID_DIR/opencode`, which means users cannot carry their existing opencode config (custom models, API keys stored in opencode's config, etc.) into an aid session. A flag or env var to opt out of the override would remove this friction for users who already have an opencode setup they're happy with. Deferred until the scope of config merging is clearer.
 - [ ] **T-019**: User nvim/tmux override layer — a structured insertion point (e.g. `~/.config/aid/nvim/lua/user.lua` required last in `init.lua`) that lets users extend aid's config without forking the repo. Currently deferred because the scope of safely composing arbitrary user configs with aid's own plugin load order, keybinds, and autocmds is undefined. See ADR-012.
-- [ ] **T-024 / BUG-015**: Intermittent `E5560: writefile must not be called in a fast event context` after lazygit commit; needs stack trace on next occurrence to identify call site (see [bugs/BUG-015.md](bugs/BUG-015.md))
+- [ ] **T-024 / BUG-015**: Intermittent `E5560: writefile must not be called in a fast event context` after lazygit commit; needs stack trace on next occurrence to identify call site (see [bugs/watching/BUG-015.md](bugs/watching/BUG-015.md))
 
 ## Done
 
+- [x] **2026-03-09**: T-023 / BUG-014 — `<Tab>` in treemux sidebar opens file inside sidebar pane; fixed: `<Tab>` remapped to `<Nop>` in `treemux_init.lua` after plugin setup
 - [x] **2026-03-09**: T-007 — self-contained theme system; palette centralized in `nvim/lua/palette.lua`; bufferline, statusline, treemux highlights, and tmux status bar all driven from single source; `tokyonight` dependency removed from treemux; `gen-tmux-palette.sh` renders tmux colors at session start
 - [x] **2026-03-09**: Audit `.aidignore` patterns in Telescope (`file_ignore_patterns` applied consistently?) — audit complete; revealed BUG-011 (Telescope patterns frozen at startup, not live-updated); fix tracked as T-021
 - [x] **2026-03-09**: T-014 / BUG-009 — opencode file edits not visible in nvim until focus switch; `vim.uv.new_fs_event` watcher per open buffer's directory (`sync.watch_buf()`); BUG-013 fixed: `AID_NVIM_SOCKET` scoped per-session; `pane-focus-in` hook upgraded to `sync.sync()`

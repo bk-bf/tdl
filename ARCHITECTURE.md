@@ -1,4 +1,4 @@
-<!-- LOC cap: 335 (source: 2391, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
 # Architecture
 
 ## Overview
@@ -40,6 +40,7 @@ boot.sh (curl | bash)
 aid -l / --list   → list sessions (tmux list-sessions) and exit
 aid -a            → interactive list; auto-attach if only one session
 aid -a <name>     → attach to named session directly and exit
+aid -i / --install → (re)run install.sh — install/update plugins and symlinks
 aid               → create a new session in $PWD
 ```
 
@@ -55,16 +56,19 @@ aid.sh
   ├── gen-tmux-palette.sh (generates tmux/palette.conf from nvim/lua/palette.lua)
   ├── tmux -L aid -f <AID_DIR>/tmux.conf new-session -d -s <session>
    ├── set-environment -g:
-   │       AID_DIR             → <AID_DIR>
-   │       AID_IGNORE          → comma-separated .aidignore entries
-   │       OPENCODE_CONFIG_DIR → <AID_DIR>/opencode
-   │       NVIM_APPNAME        → nvim
-   │       XDG_DATA_HOME       → ~/.local/share/aid   (nvim plugin data → ~/.local/share/aid/nvim/)
-   │       XDG_STATE_HOME      → ~/.local/state/aid   (nvim shada/swap  → ~/.local/state/aid/nvim/)
-   │       XDG_CACHE_HOME      → ~/.cache/aid         (nvim cache       → ~/.cache/aid/nvim/)
+   │       AID_DIR                  → <AID_DIR>
+   │       AID_IGNORE               → comma-separated .aidignore entries
+   │       OPENCODE_CONFIG_DIR      → <AID_DIR>/opencode
+   │       OPENCODE_TUI_CONFIG      → <AID_DIR>/opencode/tui-config.json
+   │       TMUX_PLUGIN_MANAGER_PATH → <AID_DIR>/tmux/plugins/tpm
+   │       NVIM_APPNAME             → nvim
+   │       XDG_DATA_HOME            → ~/.local/share/aid   (nvim plugin data → ~/.local/share/aid/nvim/)
+   │       XDG_STATE_HOME           → ~/.local/state/aid   (nvim shada/swap  → ~/.local/state/aid/nvim/)
+   │       XDG_CACHE_HOME           → ~/.cache/aid         (nvim cache       → ~/.cache/aid/nvim/)
    │   set-environment -t <session>:
    │       AID_NVIM_SOCKET     → /tmp/aid-nvim-<session>.sock  (session-local)
-  ├── poll loop until @treemux-key-Tab is set (replaces sleep 1.5)
+  ├── set @treemux-key-Tab / @treemux-key-Bspace directly (sidebar.tmux targets default
+  │       tmux socket, not -L aid — so aid.sh sets the options itself)
   ├── capture editor_pane_id (list-panes -F "#{pane_id}" | head -1)
   ├── split-window -h -p 29 → spawned directly into opencode process
   │       (no shell prompt — bypasses zsh autocorrect, no send-keys mangling)
@@ -77,6 +81,7 @@ aid.sh
    │         XDG_CONFIG_HOME=<AID_DIR>
    │         XDG_DATA_HOME=~/.local/share/aid  XDG_STATE_HOME=~/.local/state/aid
    │         XDG_CACHE_HOME=~/.cache/aid
+   │         LG_CONFIG_FILE=<AID_DIR>/lazygit.yml
    │         NVIM_APPNAME=nvim nvim --listen <nvim_socket>
    │       done
   │       (bypasses interactive shell entirely — zsh autocorrect/send-keys
@@ -94,7 +99,7 @@ The editor pane is respawned via `respawn-pane -k` directly into the nvim restar
 
 ## Environment variables (tmux server scope)
 
-Set via `tmux -L aid set-environment -g` before any pane is created. All child shells inherit them automatically. `XDG_CONFIG_HOME` is **not** global — it is injected inline only on the nvim `respawn-pane` command and the treemux `@treemux-nvim-command` option, so it does not leak into opencode or other panes.
+Set via `tmux -L aid set-environment -g` before any pane is created. All child shells inherit them automatically. `XDG_CONFIG_HOME` is **not** global — it is injected inline only on the nvim `respawn-pane` command and the treemux `@treemux-nvim-command` option, so it does not leak into opencode or other panes. `LG_CONFIG_FILE` is similarly injected inline on the `respawn-pane` command only.
 
 | Variable | Value | Purpose |
 |---|---|---|
@@ -105,6 +110,8 @@ Set via `tmux -L aid set-environment -g` before any pane is created. All child s
 | `XDG_STATE_HOME` | `~/.local/state/aid` | nvim shada / swap / undo → `~/.local/state/aid/nvim/` — not `~/.local/state/nvim/` |
 | `XDG_CACHE_HOME` | `~/.cache/aid` | nvim cache → `~/.cache/aid/nvim/` — not `~/.cache/nvim/` |
 | `OPENCODE_CONFIG_DIR` | `$AID_DIR/opencode` | Isolates opencode config from `~/.config/opencode` |
+| `OPENCODE_TUI_CONFIG` | `$AID_DIR/opencode/tui-config.json` | Points opencode at aid's TUI config (theme, layout) |
+| `TMUX_PLUGIN_MANAGER_PATH` | `$AID_DIR/tmux/plugins/tpm` | Needed by TPM scripts running inside the aid server |
 | `AID_NVIM_SOCKET` | `/tmp/aid-nvim-<session>.sock` | Sidebar nvim reads at startup to set `g:nvim_tree_remote_socket_path`; set session-local (`-t`) so multiple concurrent sessions don't clobber each other |
 
 ## Pane ownership
@@ -147,12 +154,15 @@ The load order within `init.lua` is intentional and must be preserved:
 3. OPTIONS              — vim.opt.* globals before plugins/autocmds fire
                           (critical: autocmds reading vim.o.number must see
                           the global value, not Neovim's built-in default)
+                          includes: vim.opt.exrc = true + vim.opt.secure = true
+                          for per-project .nvim.lua support
 4. PALETTE              — local p = require("palette")  (colors available to plugin opts)
 5. GIT-SYNC require     — local sync = require("sync")
 6. CHEATSHEET           — _cs_open() (plain edit, no styling/autocmds/buffer tracking)
 7. BOOTSTRAP LAZY       — vim.opt.rtp:prepend(lazypath)
 8. KEYMAPS              — vim.keymap.set() calls (reference sync, _cs_open, etc.)
 9. PLUGINS              — require("lazy").setup({...})
+                          includes: persistence.nvim for session save/restore
 10. APPEARANCE          — _G.apply_palette(): nvim_set_hl for all groups + guicursor
 11. DIAGNOSTICS         — vim.diagnostic.config()
 12. AUTOCMDS            — FileType, FocusGained, TermClose, DirChanged, VimEnter
@@ -178,8 +188,8 @@ sync.sync()
   1. silent! checktime           — reload all buffers changed on disk
   2. gitsigns.refresh()          — re-read HEAD, recompute hunk signs + branch name
   3. nvim-tree.api.tree.reload() — full tree rebuild + git status
-  4. msgpack-RPC to treemux nvim — require('aidignore').reset()
-     (silent; no send-keys, no cmdline flash — see T-016/BUG-008)
+  4. msgpack-RPC to treemux nvim — pcall(require('nvim-tree.api').tree.reload)
+     (fire-and-forget; does NOT send aidignore.reset() — see note below)
 ```
 
 **`checktime()`** — lightweight: `silent! checktime` only. No sign-column or tree redraws. Safe for high-frequency events (BufEnter, CursorHold) to avoid visual flicker.
@@ -195,7 +205,7 @@ sync.reload()
   4. sync()                                      — git state + buffers + sidebar
 ```
 
-**`watch_palette()`** — registers an `fs_event` watcher on `$AID_DIR/nvim/lua/` (filtered to `palette.lua` only). Called once on `VimEnter`. On change: calls `_G.apply_palette()` to re-apply all nvim highlight groups, then runs `gen-tmux-palette.sh && tmux source-file tmux/palette.conf` as a detached job. Notifies `"palette reloaded"`. Stored under `_watchers["__palette__"]`; stops and re-registers if called again (idempotent).
+**`watch_palette()`** — registers an `fs_event` watcher on `$AID_DIR/nvim/lua/` (filtered to `palette.lua` only). Called once on `VimEnter`. On change: calls `_G.apply_palette()` to re-apply all nvim highlight groups, then runs `gen-tmux-palette.sh && tmux -L aid source-file <AID_DIR>/tmux/palette.conf` as a detached job. Notifies `"palette reloaded"`. Stored under `_watchers["__palette__"]`; stops and re-registers if called again (idempotent).
 
 **`watch_buf(bufnr)`** — watches the parent directory of a buffer's file via `fs_event`. Called on `BufEnter`. Skips special/non-file buffers. Idempotent: no-op if the directory is already watched. On any change in the directory, calls `sync()` so external edits (e.g. from opencode) appear immediately without a pane switch.
 
@@ -216,10 +226,10 @@ sync.reload()
 The treemux sidebar is a separate nvim process. `sync()` reaches it via direct msgpack-RPC:
 
 1. On `VimEnter`, `treemux_init.lua` writes `vim.v.servername` into tmux option `@-treemux-nvim-socket-<editor_pane_id>`. Removed on `VimLeave`.
-2. `sync.lua` reads that option, calls `vim.fn.sockconnect("pipe", socket, {rpc=true})`, then `vim.rpcnotify(chan, "nvim_exec_lua", "require('aidignore').reset()", {})`.
+2. `sync.lua` reads that option, calls `vim.fn.sockconnect("pipe", socket, {rpc=true})`, then `vim.rpcnotify(chan, "nvim_exec_lua", "pcall(require('nvim-tree.api').tree.reload)", {})`.
 3. `rpcnotify` is fire-and-forget — does not stall the main nvim event loop. Channel is closed after 500ms via `vim.defer_fn`. `pcall` guards against a dead socket.
 
-This replaces the previous `tmux send-keys` approach, which injected visible keystrokes into the treemux cmdline and caused bottom-bar flicker and cross-pane line-number bleed (BUG-008).
+**Why `tree.reload()` and not `aidignore.reset()`**: sending `reset()` via RPC would cause the sidebar nvim to run `_apply_to_nvimtree()` → `pcall(s.sync)` → `checktime` in the sidebar context, which opens `.aidignore` as a buffer and destroys the nvim-tree window. The sidebar inherits filters from `AID_IGNORE` at startup; live filter changes are handled by `aidignore.watch()` running inside the sidebar nvim directly (not via RPC from the main nvim).
 
 ### Treemux self-heal
 
@@ -271,7 +281,7 @@ palette.lua saved
   → sync.watch_palette() inotify event
   → _G.apply_palette()          — re-applies all nvim highlight groups immediately
   → gen-tmux-palette.sh         — rewrites tmux/palette.conf
-  → tmux -L aid source-file tmux/palette.conf  — tmux status bar updates
+  → tmux -L aid source-file <AID_DIR>/tmux/palette.conf  — tmux status bar updates
   → vim.notify("palette reloaded")
 ```
 
@@ -284,6 +294,7 @@ Opencode runs in the rightmost pane (initial split 29%; resized to 28% after sid
 Custom slash commands live in `aid/opencode/commands/`:
 - `commit.md` — generates a conventional commit message from staged diff
 - `udoc.md` — updates `aid/docs/` to reflect recent code changes (with LOC cap, archiving, and pruning)
+- `spec.md` — generates a feature specification from a description or existing code
 
 `aid/opencode/package.json` declares the project name for the opencode workspace.
 
@@ -301,12 +312,12 @@ aidignore.patterns()  — returns { raw = {...}, telescope = {...} }
                          result is cached until reset() or watch() fires
 
 aidignore.watch()     — start (or restart) a vim.uv fs_event watcher on the
-                         nearest .aidignore; on change: bust cache + re-apply
+                         nearest .aidignore file directly; on change: bust cache + re-apply
                          Called from reset() and directly after nvim-tree setup.
 
 aidignore.reset()     — bust cache + _apply_to_nvimtree() + _apply_to_telescope()
                          + restart watch(). Called from DirChanged autocmd,
-                         reload(), and via RPC from sync.lua (treemux sidebar).
+                         reload(), and from the sidebar nvim's own watch() handler.
 ```
 
 ### Live filter update mechanism (`_apply_to_nvimtree`)
@@ -323,7 +334,7 @@ The solution: mutate `require("nvim-tree.core").get_explorer().filters.ignore_li
 
 `aidignore.lua` lives in `nvim/lua/`. `treemux_init.lua` prepends `AID_DIR/nvim/lua` to `package.path` before any `require()`, allowing `require("aidignore")` from the sidebar nvim.
 
-At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `AID_IGNORE` env (set by `aid.sh` at session start). After `nvim-tree.setup()`, it calls `aidignore.watch()` for live updates. When the main nvim's `sync()` fires, it contacts the sidebar via msgpack-RPC to call `aidignore.reset()` — re-reads `.aidignore` from disk, mutates `ignore_list`, reloads the tree.
+At startup, `treemux_init.lua` populates nvim-tree `filters.custom` from `AID_IGNORE` env (set by `aid.sh` at session start). After `nvim-tree.setup()`, it calls `aidignore.watch()` for live updates. When the main nvim's `sync()` fires, it contacts the sidebar via msgpack-RPC to call `nvim-tree.api.tree.reload()` — rebuilding the file tree to reflect any external git changes. Live `.aidignore` filter changes are handled independently by `aidignore.watch()` running inside the sidebar nvim.
 
 ### Telescope integration
 

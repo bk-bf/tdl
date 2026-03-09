@@ -152,18 +152,21 @@ The navigation binds (`C-h/j/k/l`) are functionally integrated with aid's nvim c
 
 ---
 
-### ADR-011: `XDG_CONFIG_HOME=~/.config/aid` for centralised nvim config
+### ADR-011: `XDG_CONFIG_HOME` injection inline (not global) for nvim config isolation
 
 **Date**: 2026-03-09
-**Decision**: `aid.sh` sets `XDG_CONFIG_HOME=$HOME/.config/aid` in the tmux server environment. Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (sidebar), nvim resolves config paths to `~/.config/aid/nvim` and `~/.config/aid/treemux`. Both are symlinks into the repo created by `install.sh`. The user's `~/.config/nvim` is never touched.
+**Decision**: `aid.sh` does **not** set `XDG_CONFIG_HOME` globally in the tmux server environment. Instead, it injects `XDG_CONFIG_HOME=$AID_DIR` inline on two specific commands only: (1) the `respawn-pane` nvim restart loop command, and (2) the `@treemux-nvim-command` tmux option that treemux uses to launch the sidebar nvim. This keeps `XDG_CONFIG_HOME` scoped to the nvim processes, not to every pane shell or opencode.
 
-**Reason**: `NVIM_APPNAME` alone can only be a single path component — it cannot produce nested paths like `~/.config/aid/nvim`. The only way to get everything under a single `~/.config/aid/` root is to redirect `XDG_CONFIG_HOME`. Setting it in the tmux server environment (via `tmux set-environment -g`) means every process spawned inside an aid session inherits it automatically — including nvim invocations from shell prompts, not just the respawn-pane loop.
+Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (sidebar), nvim resolves config paths to `$AID_DIR/nvim` and `~/.config/aid/treemux`. The user's `~/.config/nvim` is never touched.
 
-**Scope of `XDG_CONFIG_HOME` override**: The override is scoped to the aid tmux server process tree. It does not affect the user's login shell or any process outside an aid session. Subprocesses launched by nvim (LSP servers, formatters, shell commands via `!`) will also inherit the override, which is intentional — they should resolve config relative to the aid environment. The only known footgun is a tool that reads `XDG_CONFIG_HOME` to write user-global state (e.g. a tool that stores usage history there). Such tools are rare; document if one is found.
+**Reason**: `NVIM_APPNAME` alone can only be a single path component — it cannot produce nested paths like `~/.config/aid/nvim`. The only way to get everything under a single config root is to redirect `XDG_CONFIG_HOME`. However, setting it globally in the tmux server environment (via `tmux set-environment -g`) would cause every pane shell, opencode, and any other tool launched inside the aid session to see `XDG_CONFIG_HOME=$AID_DIR`, which is wrong — those processes should use their own config dirs. The inline injection scopes the override precisely to the nvim invocations.
+
+**Scope of `XDG_CONFIG_HOME` override**: The override is scoped to the specific nvim processes (main editor and sidebar). Subprocesses launched *by nvim* (LSP servers, formatters, shell commands via `!`) will also inherit it via process inheritance, which is intentional — they should resolve config relative to the aid environment. The only known footgun is a tool that reads `XDG_CONFIG_HOME` to write user-global state (e.g. a tool that stores usage history there). Such tools are rare; document if one is found.
 
 **Alternatives rejected**:
 - `NVIM_APPNAME=aid` + `NVIM_APPNAME=aid-treemux`: gives `~/.config/aid` (main) but `~/.config/aid-treemux` (sidebar) — not truly nested.
 - Pass `--cmd "set rtp+=..."` to nvim directly: requires rebuilding nvim's entire runtimepath resolution, fragile across nvim versions.
+- Set `XDG_CONFIG_HOME` globally via `set-environment -g`: bleeds into opencode and other pane shells — rejected.
 
 ---
 
