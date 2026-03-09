@@ -1,4 +1,4 @@
-<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 425 (source: 3037, ratio: 0.14, updated: 2026-03-09) -->
 # Roadmap
 
 ## Phase 1 — Harden (fix before any promotion)
@@ -51,4 +51,6 @@
 - [x] **2026-03-09**: Fix cheatsheet bugs (VimEnter timing, gmatch crash, restore on last file close, line numbers after dismiss)
 - [x] **2026-03-09**: Fix bufferline not rendering on startup; add gitsigns `numhl`; disable spell by default
 - [x] **2026-03-09**: Add opencode custom commands (`commit.md`, `udoc.md`); README gif/screenshot; expand nvim config docs
+- [x] **2026-03-09**: `/lsp` command — Setup mode wires Mason LSP binaries into `opencode.json`; Diagnose mode runs available CLI tools (lua-language-server, selene, etc.) directly and fixes reported issues; Step 4b bootstraps linter config files; Step D3 tree-walks for `.luarc.json` to eliminate lua-ls false positives; command collapsed from 553 lines to 296 lines by making tool invocation language/tool agnostic
+- [x] **2026-03-09**: Fix lua-ls `"Undefined global vim"` false positives — `.luarc.json` tree-walk in `/lsp` D3; removed `selene.toml`/`vim.yml` from repo (personal dev tool configs, gitignored); fixed `vim.loop` → `vim.uv` and `nvim-tree.lib.open` → `nvim-tree.api.tree.open` in `treemux_init.lua`
 

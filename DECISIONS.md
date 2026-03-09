@@ -1,4 +1,4 @@
-<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 425 (source: 3037, ratio: 0.14, updated: 2026-03-09) -->
 # Decisions
 
 Architecture decision records — why things are the way they are.
@@ -60,6 +60,15 @@ side and covers all current and future open paths in one place.
 **Scope of the same fix**: `redrawtabline` was also missing from the `<leader>tb`
 tab-bar toggle, where `showtabline` was changed without a subsequent redraw. Fixed at
 the same time.
+
+**Correction (2026-03-09)**: Investigation revealed the `BufEnter` autocmd was not the
+root cause of the missing-tab symptom. The real cause was `bdelete` leaving ghost buffer
+entries (`buflisted=false`) that the `_remote_bufnr()` dedup helper found and switched
+to — but bufferline filters on `buflisted=true` so no tab rendered. The actual fix was
+changing `close_command` / `right_mouse_command` / `<leader>q` to use `bwipe` instead of
+`bdelete`, which removes the buffer entry entirely. The `BufEnter` autocmd is harmless and
+cheap so it remains, but it is belt-and-suspenders, not the primary fix. See
+[bugs/watching/BUG-018.md](bugs/watching/BUG-018.md) for the full post-mortem.
 
 ---
 

@@ -1,4 +1,4 @@
-<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 425 (source: 3037, ratio: 0.14, updated: 2026-03-09) -->
 # Architecture
 
 ## Overview
@@ -254,7 +254,7 @@ All aid colors are defined in a single file: `nvim/lua/palette.lua`. No hex stri
 ### Consumers
 
 - **`nvim/init.lua`** — `require("palette")` at top; bufferline highlight table and the `_G.apply_palette()` function use `p.*` references. `apply_palette()` sets every `nvim_set_hl` call and is invoked at startup and on hot-reload.
-- **`nvim-treemux/treemux_init.lua`** — `pcall(require, "palette")` with a hardcoded fallback table; accent highlights (`NvimTreeFolderName`, git sign groups) use palette values.
+- **`nvim-treemux/treemux_init.lua`** — `pcall(dofile, aid_dir .. "/nvim/lua/palette.lua")` with a hardcoded fallback table; accent highlights (`NvimTreeFolderName`, git sign groups) use palette values.
 - **`gen-tmux-palette.sh`** — reads `palette.lua` via `lua - "$PALETTE"` with `loadfile()`, emits `key=value` shell assignments, `eval`s them, then writes `tmux/palette.conf`.
 
 ### tmux bridge (`gen-tmux-palette.sh` → `tmux/palette.conf`)
@@ -295,6 +295,7 @@ Custom slash commands live in `aid/opencode/commands/`:
 - `commit.md` — generates a conventional commit message from staged diff
 - `udoc.md` — updates `aid/docs/` to reflect recent code changes (with LOC cap, archiving, and pruning)
 - `spec.md` — generates a feature specification from a description or existing code
+- `lsp.md` — Setup: wires Mason LSP binaries into `opencode.json`; Diagnose: runs available CLI diagnostic tools against source files and fixes reported issues
 
 `aid/opencode/package.json` declares the project name for the opencode workspace.
 

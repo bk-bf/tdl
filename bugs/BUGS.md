@@ -1,4 +1,4 @@
-<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
+<!-- LOC cap: 425 (source: 3037, ratio: 0.14, updated: 2026-03-09) -->
 # Bugs
 
 ## Open
@@ -7,7 +7,7 @@
 
 **Status**: closed — needs monitoring for confimation
 **Repro**: open a file from the treemux sidebar or cold-start with a file argument; the tab bar sometimes shows no tab for the opened buffer even though the buffer is loaded.
-**Notes**: buffer is confirmed loaded (`:buffers` shows it); tab bar simply does not render a tab for it. Intermittent. Root cause: treemux sidebar sends `:tabnew <file>` via msgpack-RPC (`nvim_command`); `BufAdd`/`TabNew` fire but `redrawtabline` is never called after the RPC dispatch, so bufferline's rendered tabline is stale. Fix: add `BufAdd`/`TabNew` autocmd calling `redrawtabline`. See [open/BUG-018.md](open/BUG-018.md).
+**Notes**: buffer is confirmed loaded (`:buffers` shows it); tab bar simply does not render a tab for it. Intermittent. Root cause: treemux sidebar sends `:tabnew <file>` via msgpack-RPC (`nvim_command`); `BufAdd`/`TabNew` fire but `redrawtabline` is never called after the RPC dispatch, so bufferline's rendered tabline is stale. Fix: add `BufAdd`/`TabNew` autocmd calling `redrawtabline`. See [watching/BUG-018.md](watching/BUG-018.md).
 
 ### BUG-012: bufferline truncation count `[+N]` cannot be hidden via config
 
