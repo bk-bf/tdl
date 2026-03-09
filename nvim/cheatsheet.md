@@ -51,6 +51,25 @@
   「leader」ca    code action              「leader」7     next diagnostic
   「leader」8     prev diagnostic          「leader」9     show diagnostic
 
+  :Mason         install LSP servers, linters, formatters, DAP adapters
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  FORMAT / LINT  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  「leader」F     format buffer            auto-formats on save (LSP fallback)
+  linters run on save · add tools via :Mason · configure in .nvim.lua
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  DEBUG  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  「leader」dc    continue / start         「leader」db    toggle breakpoint
+  「leader」dB    conditional breakpoint   「leader」di    step into
+  「leader」do    step over                「leader」dO    step out
+  「leader」dr    open REPL                「leader」dq    terminate
+  「leader」du    toggle debug UI
+
+  install DAP adapters via :Mason · UI opens automatically on session start
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  EDITING  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -687,18 +687,40 @@ require("lazy").setup({
     end,
   },
 
+  -- ── Mason: binary package manager for LSP servers, linters, formatters, DAP adapters
+  -- Open :Mason to browse ~700 packages and install what you need.
+  -- Nothing is pre-installed; aid only wires the infrastructure.
+  {
+    "williamboman/mason.nvim",
+    build = ":MasonUpdate",
+    opts = {},
+  },
+
+  -- ── mason-lspconfig: bridges mason ↔ nvim-lspconfig
+  -- automatic_enable = true (Neovim 0.11+): any Mason-installed LSP server that has
+  -- a matching lspconfig entry is automatically enabled for the correct filetypes —
+  -- zero per-server boilerplate required.
+  {
+    "williamboman/mason-lspconfig.nvim",
+    dependencies = { "williamboman/mason.nvim", "neovim/nvim-lspconfig" },
+    config = function()
+      require("mason-lspconfig").setup({
+        automatic_enable = true,
+      })
+    end,
+  },
+
   -- LSP
   {
     "neovim/nvim-lspconfig",
+    dependencies = { "hrsh7th/cmp-nvim-lsp" },
     config = function()
       local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
-      -- Add language servers here as needed, e.g.:
-      -- vim.lsp.config('lua_ls',   { capabilities = capabilities })
-      -- vim.lsp.config('pyright',  { capabilities = capabilities })
-      -- vim.lsp.config('bashls',   { capabilities = capabilities })
-      vim.lsp.config('gopls', { capabilities = capabilities })
-      vim.lsp.enable('gopls')
+      -- Pass capabilities to all servers that mason-lspconfig auto-enables.
+      -- This runs before mason-lspconfig wires the servers, so the capabilities
+      -- table is available for every server it enables.
+      vim.lsp.config("*", { capabilities = capabilities })
 
       -- Keymaps available when LSP attaches to a buffer
       vim.api.nvim_create_autocmd("LspAttach", {
@@ -712,6 +734,104 @@ require("lazy").setup({
         end,
       })
     end,
+  },
+
+  -- ── conform.nvim: formatter runner
+  -- formatters_by_ft is intentionally empty — add entries per-project in .nvim.lua,
+  -- or globally in ~/.config/nvim/lua/user.lua once T-019 lands.
+  -- format_on_save falls back to LSP formatting when no formatter is configured.
+  -- <leader>F — format current buffer manually.
+  {
+    "stevearc/conform.nvim",
+    event = "BufWritePre",
+    keys = {
+      { "<leader>F", function() require("conform").format({ async = true }) end, desc = "Format buffer" },
+    },
+    opts = {
+      formatters_by_ft = {},
+      format_on_save = {
+        timeout_ms = 1000,
+        lsp_fallback = true,
+      },
+    },
+  },
+
+  -- ── nvim-lint: linter runner
+  -- linters_by_ft is intentionally empty — add entries per-project in .nvim.lua.
+  -- Reports via vim.diagnostic. The BufWritePost autocmd triggers lint.try_lint()
+  -- which is a no-op when no linters are configured for the current filetype.
+  {
+    "mfussenegger/nvim-lint",
+    event = { "BufWritePost" },
+    config = function()
+      local lint = require("lint")
+      lint.linters_by_ft = {}
+      vim.api.nvim_create_autocmd("BufWritePost", {
+        desc = "nvim-lint: run linters after save",
+        callback = function()
+          lint.try_lint()
+        end,
+      })
+    end,
+  },
+
+  -- ── nvim-dap + nvim-dap-ui + mason-nvim-dap: debugger layer
+  -- mason-nvim-dap with handlers = {} auto-installs default adapter configs for any
+  -- Mason-installed DAP adapter — no per-language boilerplate required.
+  -- nvim-dap-ui opens/closes automatically when a debug session starts/ends.
+  --
+  -- NOTE: Python (debugpy) — debugpy runs in Mason's own venv, not the project venv.
+  -- If your project uses a virtualenv, set dap.configurations.python[n].pythonPath
+  -- to your interpreter path (e.g. in .nvim.lua). Aid cannot safely auto-detect this.
+  --
+  -- Keymaps:
+  --   <leader>dc  — continue / start
+  --   <leader>db  — toggle breakpoint
+  --   <leader>dB  — conditional breakpoint
+  --   <leader>di  — step into
+  --   <leader>do  — step over
+  --   <leader>dO  — step out
+  --   <leader>dr  — open REPL
+  --   <leader>dq  — terminate session
+  --   <leader>du  — toggle DAP UI manually
+  {
+    "mfussenegger/nvim-dap",
+    dependencies = {
+      {
+        "rcarriga/nvim-dap-ui",
+        dependencies = { "nvim-neotest/nvim-nio" },
+        config = function()
+          local dapui = require("dapui")
+          dapui.setup()
+          -- Auto-open/close the UI when a session starts/ends
+          local dap = require("dap")
+          dap.listeners.after.event_initialized["dapui_config"]  = function() dapui.open() end
+          dap.listeners.before.event_terminated["dapui_config"]  = function() dapui.close() end
+          dap.listeners.before.event_exited["dapui_config"]      = function() dapui.close() end
+        end,
+      },
+      {
+        "jay-babu/mason-nvim-dap.nvim",
+        dependencies = { "williamboman/mason.nvim" },
+        opts = {
+          -- handlers = {} activates automatic default configs for every installed adapter
+          handlers = {},
+        },
+      },
+    },
+    keys = {
+      { "<leader>dc", function() require("dap").continue() end,          desc = "Debug: continue" },
+      { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "Debug: toggle breakpoint" },
+      { "<leader>dB", function()
+          require("dap").set_breakpoint(vim.fn.input("Condition: "))
+        end, desc = "Debug: conditional breakpoint" },
+      { "<leader>di", function() require("dap").step_into() end,  desc = "Debug: step into" },
+      { "<leader>do", function() require("dap").step_over() end,  desc = "Debug: step over" },
+      { "<leader>dO", function() require("dap").step_out() end,   desc = "Debug: step out" },
+      { "<leader>dr", function() require("dap").repl.open() end,  desc = "Debug: open REPL" },
+      { "<leader>dq", function() require("dap").terminate() end,  desc = "Debug: terminate" },
+      { "<leader>du", function() require("dapui").toggle() end,   desc = "Debug: toggle UI" },
+    },
   },
 
   -- Autocompletion
