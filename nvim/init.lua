@@ -5,7 +5,7 @@ vim.g.mapleader = " "
 
 -- Disable netrw before any plugin loads — nvim-tree handles all file/dir
 -- browsing; netrw must not hijack directory opens or VimEnter.
-vim.g.loaded_netrw       = 1
+vim.g.loaded_netrw = 1
 vim.g.loaded_netrwPlugin = 1
 
 -- ============================================================
@@ -13,7 +13,6 @@ vim.g.loaded_netrwPlugin = 1
 -- ============================================================
 -- Set early — before plugins, autocmds, and cheatsheet code — so that
 -- vim.o.* reflects the intended globals when any autocmd reads them.
-
 -- Line numbers
 vim.opt.number = true
 vim.opt.relativenumber = false
@@ -96,8 +95,7 @@ vim.keymap.set("n", "<leader>?", _cs_open, { desc = "Open cheatsheet" })
 -- ============================================================
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
-  vim.fn.system({ "git", "clone",
-    "https://github.com/folke/lazy.nvim.git", lazypath })
+  vim.fn.system({ "git", "clone", "https://github.com/folke/lazy.nvim.git", lazypath })
 end
 vim.opt.rtp:prepend(lazypath)
 
@@ -145,75 +143,119 @@ vim.opt.rtp:prepend(lazypath)
 -- <leader>bb — open bookmarks in Telescope
 local _bm_file = vim.fn.stdpath("data") .. "/global_bookmarks"
 local function _bm_read()
-  local f = io.open(_bm_file, "r"); if not f then return {} end
+  local f = io.open(_bm_file, "r")
+  if not f then
+    return {}
+  end
   local t = {}
-  for l in f:lines() do if l ~= "" then table.insert(t, l) end end
-  f:close(); return t
+  for l in f:lines() do
+    if l ~= "" then
+      table.insert(t, l)
+    end
+  end
+  f:close()
+  return t
 end
 local function _bm_write(t)
-  local f = io.open(_bm_file, "w"); if not f then return end
-  for _, p in ipairs(t) do f:write(p .. "\n") end; f:close()
+  local f = io.open(_bm_file, "w")
+  if not f then
+    return
+  end
+  for _, p in ipairs(t) do
+    f:write(p .. "\n")
+  end
+  f:close()
 end
 -- Returns the most meaningful path: real file buffer → its path; otherwise → cwd
 local function _bm_current()
   local p = vim.fn.expand("%:p")
-  if p ~= "" and vim.fn.filereadable(p) == 1 then return p end
+  if p ~= "" and vim.fn.filereadable(p) == 1 then
+    return p
+  end
   return vim.fn.getcwd()
 end
 local function _bm_open_picker()
-  local t = _bm_read(); if #t == 0 then vim.notify("No bookmarks"); return end
+  local t = _bm_read()
+  if #t == 0 then
+    vim.notify("No bookmarks")
+    return
+  end
   local conf = require("telescope.config").values
   local actions = require("telescope.actions")
   local action_state = require("telescope.actions.state")
-  require("telescope.pickers").new({}, {
-    prompt_title = "Bookmarks",
-    finder = require("telescope.finders").new_table({
-      results = t,
-      entry_maker = function(p)
-        local is_dir = vim.fn.isdirectory(p) == 1
-        local icon = is_dir and " " or " "
-        return { value = p, display = icon .. vim.fn.fnamemodify(p, ":~"), ordinal = p, path = p }
+  require("telescope.pickers")
+    .new({}, {
+      prompt_title = "Bookmarks",
+      finder = require("telescope.finders").new_table({
+        results = t,
+        entry_maker = function(p)
+          local is_dir = vim.fn.isdirectory(p) == 1
+          local icon = is_dir and " " or " "
+          return { value = p, display = icon .. vim.fn.fnamemodify(p, ":~"), ordinal = p, path = p }
+        end,
+      }),
+      previewer = conf.file_previewer({}),
+      sorter = conf.generic_sorter({}),
+      attach_mappings = function(prompt_bufnr)
+        actions.select_default:replace(function()
+          actions.close(prompt_bufnr)
+          local entry = action_state.get_selected_entry()
+          if not entry then
+            return
+          end
+          if vim.fn.isdirectory(entry.value) == 1 then
+            vim.cmd("cd " .. vim.fn.fnameescape(entry.value))
+            require("nvim-tree.api").tree.change_root(entry.value)
+            require("nvim-tree.api").tree.open({ focus = true })
+          else
+            vim.cmd("edit " .. vim.fn.fnameescape(entry.value))
+          end
+        end)
+        return true
       end,
-    }),
-    previewer = conf.file_previewer({}),
-    sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr)
-      actions.select_default:replace(function()
-        actions.close(prompt_bufnr)
-        local entry = action_state.get_selected_entry()
-        if not entry then return end
-        if vim.fn.isdirectory(entry.value) == 1 then
-          vim.cmd("cd " .. vim.fn.fnameescape(entry.value))
-          require("nvim-tree.api").tree.change_root(entry.value)
-          require("nvim-tree.api").tree.open({ focus = true })
-        else
-          vim.cmd("edit " .. vim.fn.fnameescape(entry.value))
-        end
-      end)
-      return true
-    end,
-  }):find()
+    })
+    :find()
 end
 vim.keymap.set("n", "<leader>ba", function()
   local p = _bm_current()
   local t = _bm_read()
-  for _, v in ipairs(t) do if v == p then vim.notify("Already bookmarked"); return end end
-  table.insert(t, p); _bm_write(t)
+  for _, v in ipairs(t) do
+    if v == p then
+      vim.notify("Already bookmarked")
+      return
+    end
+  end
+  table.insert(t, p)
+  _bm_write(t)
   local label = vim.fn.isdirectory(p) == 1 and "Dir" or "File"
   vim.notify(label .. " bookmarked: " .. vim.fn.fnamemodify(p, ":~"))
 end, { desc = "Bookmark: add file or dir" })
 vim.keymap.set("n", "<leader>bd", function()
-  local p = _bm_current(); local t = _bm_read(); local new = {}; local removed = false
-  for _, v in ipairs(t) do if v ~= p then table.insert(new, v) else removed = true end end
-  if removed then _bm_write(new); vim.notify("Bookmark removed") else vim.notify("Not bookmarked") end
+  local p = _bm_current()
+  local t = _bm_read()
+  local new = {}
+  local removed = false
+  for _, v in ipairs(t) do
+    if v ~= p then
+      table.insert(new, v)
+    else
+      removed = true
+    end
+  end
+  if removed then
+    _bm_write(new)
+    vim.notify("Bookmark removed")
+  else
+    vim.notify("Not bookmarked")
+  end
 end, { desc = "Bookmark: remove file or dir" })
 vim.keymap.set("n", "<leader>bb", _bm_open_picker, { desc = "Bookmark: open file or dir" })
 
 -- <leader>f — fuzzy find files with Telescope
 vim.keymap.set("n", "<leader>f", "<cmd>Telescope find_files<cr>", { desc = "Find files" })
 -- <leader>1 — search text across all files | <leader>2 — switch open buffers
-vim.keymap.set("n", "<leader>1", "<cmd>Telescope live_grep<cr>",  { desc = "Search in files" })
-vim.keymap.set("n", "<leader>2", "<cmd>Telescope buffers<cr>",    { desc = "Open buffers" })
+vim.keymap.set("n", "<leader>1", "<cmd>Telescope live_grep<cr>", { desc = "Search in files" })
+vim.keymap.set("n", "<leader>2", "<cmd>Telescope buffers<cr>", { desc = "Open buffers" })
 
 -- Visual mode line movement
 -- J/K in visual mode — move the selected lines down/up, keeping them auto-indented
@@ -251,9 +293,12 @@ end, { desc = "Reload workspace (tmux + nvim + sidebar)" })
 
 -- Diagnostics
 -- <leader>7/8/9 — diagnostics navigation
+-- <leader>gt — all diagnostics (Telescope) | <leader>gf — current buffer diagnostics (Telescope)
 vim.keymap.set("n", "<leader>7", vim.diagnostic.goto_next, { desc = "Next diagnostic" })
 vim.keymap.set("n", "<leader>8", vim.diagnostic.goto_prev, { desc = "Prev diagnostic" })
 vim.keymap.set("n", "<leader>9", vim.diagnostic.open_float, { desc = "Show diagnostic" })
+vim.keymap.set("n", "<leader>gt", "<cmd>Telescope diagnostics<cr>", { desc = "All diagnostics (Telescope)" })
+vim.keymap.set("n", "<leader>gf", "<cmd>Telescope diagnostics bufnr=0<cr>", { desc = "Buffer diagnostics (Telescope)" })
 
 -- Spell
 -- <leader>sS — toggle spell (en) | <leader>se — English | <leader>sd — German | <leader>sn — off
@@ -278,7 +323,6 @@ vim.keymap.set("n", "<leader>sn", function()
   vim.notify("Spell: off")
 end, { desc = "Spell: off" })
 
-
 -- ============================================================
 -- STATUSLINE FUNCTION (hidden in nvim, piped to tmux via tpipeline)
 -- ============================================================
@@ -288,32 +332,34 @@ function _G.setup_statusline()
     content = {
       active = function()
         local mode, mode_hl = sl.section_mode({ trunc_width = 0 }) -- 0 = always verbose
-        local git        = sl.section_git({ trunc_width = 75 })
-        local diag       = sl.section_diagnostics({ trunc_width = 75 })
-        local filename   = sl.section_filename({ trunc_width = 140 })
-        local fileinfo   = sl.section_fileinfo({ trunc_width = 120 })
-        local location   = sl.section_location({ trunc_width = 75 })
+        local git = sl.section_git({ trunc_width = 75 })
+        local diag = sl.section_diagnostics({ trunc_width = 75 })
+        local filename = sl.section_filename({ trunc_width = 140 })
+        local fileinfo = sl.section_fileinfo({ trunc_width = 120 })
+        local location = sl.section_location({ trunc_width = 75 })
 
         -- Dynamic separator colors based on current mode highlight
         local ok, minfo = pcall(vim.api.nvim_get_hl, 0, { name = mode_hl, link = false })
         local mode_bg = (ok and minfo.bg) and string.format("#%06x", minfo.bg) or p.purple
-        vim.api.nvim_set_hl(0, "StatusSepModeToDevinfo",  { fg = mode_bg, bg = p.blue })
-        vim.api.nvim_set_hl(0, "StatusSepFileinfoToMode", { fg = p.blue,  bg = mode_bg })
+        vim.api.nvim_set_hl(0, "StatusSepModeToDevinfo", { fg = mode_bg, bg = p.blue })
+        vim.api.nvim_set_hl(0, "StatusSepFileinfoToMode", { fg = p.blue, bg = mode_bg })
 
-        local arrow = "\xee\x82\xb0" -- U+E0B0 Powerline right arrow 
-        local sep = function(hl) return string.format("%%#%s#%s", hl, arrow) end
+        local arrow = "\xee\x82\xb0" -- U+E0B0 Powerline right arrow
+        local sep = function(hl)
+          return string.format("%%#%s#%s", hl, arrow)
+        end
 
         return sl.combine_groups({
-          { hl = mode_hl,                  strings = { mode } },
+          { hl = mode_hl, strings = { mode } },
           sep("StatusSepModeToDevinfo"),
-          { hl = "MiniStatuslineDevinfo",  strings = { git, diag } },
+          { hl = "MiniStatuslineDevinfo", strings = { git, diag } },
           sep("StatusSepDevinfoToFilename"),
           "%<",
           { hl = "MiniStatuslineFilename", strings = { filename } },
           "%=",
           { hl = "MiniStatuslineFileinfo", strings = { fileinfo } },
           sep("StatusSepFileinfoToMode"),
-          { hl = mode_hl,                  strings = { location } },
+          { hl = mode_hl, strings = { location } },
         })
       end,
     },
@@ -326,16 +372,16 @@ end
 require("lazy").setup({
   -- File tree (VS Code-style sidebar)
   {
-     "nvim-tree/nvim-tree.lua",
+    "nvim-tree/nvim-tree.lua",
     event = "VimEnter",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = {
       view = { width = 30 },
       renderer = { group_empty = true },
-      filters = { dotfiles = false, git_ignored = false },  -- show hidden and git-ignored files
+      filters = { dotfiles = false, git_ignored = false }, -- show hidden and git-ignored files
     },
     keys = {
-      { "<leader>t",  "<cmd>NvimTreeToggle<cr>",   desc = "Toggle file tree" },
+      { "<leader>t", "<cmd>NvimTreeToggle<cr>", desc = "Toggle file tree" },
       { "<leader>tf", "<cmd>NvimTreeFindFile<cr>", desc = "Reveal file in tree" },
     },
     config = function(_, opts)
@@ -356,15 +402,35 @@ require("lazy").setup({
         map("<leader>ba", "Bookmark: add cwd", function()
           local p = _bm_current()
           local t = _bm_read()
-          for _, v in ipairs(t) do if v == p then vim.notify("Already bookmarked"); return end end
-          table.insert(t, p); _bm_write(t)
+          for _, v in ipairs(t) do
+            if v == p then
+              vim.notify("Already bookmarked")
+              return
+            end
+          end
+          table.insert(t, p)
+          _bm_write(t)
           local label = vim.fn.isdirectory(p) == 1 and "Dir" or "File"
           vim.notify(label .. " bookmarked: " .. vim.fn.fnamemodify(p, ":~"))
         end)
         map("<leader>bd", "Bookmark: remove cwd", function()
-          local p = _bm_current(); local t = _bm_read(); local new = {}; local removed = false
-          for _, v in ipairs(t) do if v ~= p then table.insert(new, v) else removed = true end end
-          if removed then _bm_write(new); vim.notify("Bookmark removed") else vim.notify("Not bookmarked") end
+          local p = _bm_current()
+          local t = _bm_read()
+          local new = {}
+          local removed = false
+          for _, v in ipairs(t) do
+            if v ~= p then
+              table.insert(new, v)
+            else
+              removed = true
+            end
+          end
+          if removed then
+            _bm_write(new)
+            vim.notify("Bookmark removed")
+          else
+            vim.notify("Not bookmarked")
+          end
         end)
         map("<leader>bb", "Bookmark: open", _bm_open_picker)
       end
@@ -379,7 +445,7 @@ require("lazy").setup({
     "lewis6991/gitsigns.nvim",
     opts = {
       signs = {
-        add    = { text = "▎" },
+        add = { text = "▎" },
         change = { text = "▎" },
         delete = { text = "▎" },
       },
@@ -409,8 +475,8 @@ require("lazy").setup({
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = {
       options = {
-        separator_style      = "thin",
-        diagnostics          = "nvim_lsp",
+        separator_style = "thin",
+        diagnostics = "nvim_lsp",
         -- Keep the bar visible even when only one buffer is open.  Without this
         -- bufferline fights showtabline = 2 and can blank the bar on single-buffer
         -- sessions (e.g. right after a cold start or after closing all but one tab).
@@ -421,88 +487,94 @@ require("lazy").setup({
         -- routes `buffer N` into the invisible ghost, hiding it from bufferline.
         -- bwipe removes the entry entirely, so the dedup check correctly falls
         -- through to tabnew on the next open.
-        close_command       = "bwipe! %d",
+        close_command = "bwipe! %d",
         right_mouse_command = "bwipe! %d",
       },
       highlights = {
-        fill                      = { bg = p.tab_bg },
-        background                = { fg = p.tab_fg, bg = p.tab_bg },
-        tab                       = { fg = p.tab_fg, bg = p.tab_bg },
-        tab_selected              = { fg = p.tab_fg, bg = p.tab_sel, bold = true },
-        tab_separator             = { fg = p.tab_bg, bg = p.tab_bg },
-        tab_separator_selected    = { fg = p.tab_sel, bg = p.tab_sel },
-        tab_close                 = { fg = p.tab_fg, bg = p.tab_bg },
-        separator                 = { fg = p.tab_bg, bg = p.tab_bg },
-        separator_selected        = { fg = p.tab_sel, bg = p.tab_sel },
-        separator_visible         = { fg = p.tab_bg, bg = p.tab_bg },
+        fill = { bg = p.tab_bg },
+        background = { fg = p.tab_fg, bg = p.tab_bg },
+        tab = { fg = p.tab_fg, bg = p.tab_bg },
+        tab_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true },
+        tab_separator = { fg = p.tab_bg, bg = p.tab_bg },
+        tab_separator_selected = { fg = p.tab_sel, bg = p.tab_sel },
+        tab_close = { fg = p.tab_fg, bg = p.tab_bg },
+        separator = { fg = p.tab_bg, bg = p.tab_bg },
+        separator_selected = { fg = p.tab_sel, bg = p.tab_sel },
+        separator_visible = { fg = p.tab_bg, bg = p.tab_bg },
         -- nocombine: prevents LSP/treesitter semantic tokens from bleeding their
         -- fg color over the buffer name text in the tab bar (BUG-021).
-        buffer_selected           = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
-        buffer_visible            = { fg = p.tab_fg, bg = p.tab_bg, nocombine = true },
-        close_button              = { fg = p.tab_fg, bg = p.tab_bg },
-        close_button_selected     = { fg = p.tab_fg, bg = p.tab_sel },
-        close_button_visible      = { fg = p.tab_fg, bg = p.tab_bg },
-        modified                  = { fg = p.tab_fg, bg = p.tab_bg },
-        modified_selected         = { fg = p.tab_fg, bg = p.tab_sel },
-        modified_visible          = { fg = p.tab_fg, bg = p.tab_bg },
-        duplicate                 = { fg = p.tab_fg, bg = p.tab_bg },
-        duplicate_selected        = { fg = p.tab_fg, bg = p.tab_sel },
-        duplicate_visible         = { fg = p.tab_fg, bg = p.tab_bg },
-        indicator_selected        = { fg = p.tab_sel, bg = p.tab_sel },
-        indicator_visible         = { fg = p.tab_bg, bg = p.tab_bg },
-        numbers                   = { fg = p.tab_fg, bg = p.tab_bg },
-        numbers_selected          = { fg = p.tab_fg, bg = p.tab_sel },
-        numbers_visible           = { fg = p.tab_fg, bg = p.tab_bg },
-        diagnostic                = { fg = p.tab_fg, bg = p.tab_bg },
-        diagnostic_selected       = { fg = p.tab_fg, bg = p.tab_sel },
-        diagnostic_visible        = { fg = p.tab_fg, bg = p.tab_bg },
+        buffer_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        buffer_visible = { fg = p.tab_fg, bg = p.tab_bg, nocombine = true },
+        close_button = { fg = p.tab_fg, bg = p.tab_bg },
+        close_button_selected = { fg = p.tab_fg, bg = p.tab_sel },
+        close_button_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        modified = { fg = p.tab_fg, bg = p.tab_bg },
+        modified_selected = { fg = p.tab_fg, bg = p.tab_sel },
+        modified_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        duplicate = { fg = p.tab_fg, bg = p.tab_bg },
+        duplicate_selected = { fg = p.tab_fg, bg = p.tab_sel },
+        duplicate_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        indicator_selected = { fg = p.tab_sel, bg = p.tab_sel },
+        indicator_visible = { fg = p.tab_bg, bg = p.tab_bg },
+        numbers = { fg = p.tab_fg, bg = p.tab_bg },
+        numbers_selected = { fg = p.tab_fg, bg = p.tab_sel },
+        numbers_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        diagnostic = { fg = p.tab_fg, bg = p.tab_bg },
+        diagnostic_selected = { fg = p.tab_fg, bg = p.tab_sel },
+        diagnostic_visible = { fg = p.tab_fg, bg = p.tab_bg },
         -- Per-severity groups: without these bufferline inherits DiagnosticError/Warn
         -- fg colors and tints the buffer name when LSP reports diagnostics (BUG-021).
-        error                     = { fg = p.tab_fg, bg = p.tab_bg },
-        error_selected            = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
-        error_visible             = { fg = p.tab_fg, bg = p.tab_bg },
-        error_diagnostic          = { fg = p.tab_fg, bg = p.tab_bg },
+        error = { fg = p.tab_fg, bg = p.tab_bg },
+        error_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        error_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        error_diagnostic = { fg = p.tab_fg, bg = p.tab_bg },
         error_diagnostic_selected = { fg = p.tab_fg, bg = p.tab_sel },
-        error_diagnostic_visible  = { fg = p.tab_fg, bg = p.tab_bg },
-        warning                   = { fg = p.tab_fg, bg = p.tab_bg },
-        warning_selected          = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
-        warning_visible           = { fg = p.tab_fg, bg = p.tab_bg },
-        warning_diagnostic          = { fg = p.tab_fg, bg = p.tab_bg },
+        error_diagnostic_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        warning = { fg = p.tab_fg, bg = p.tab_bg },
+        warning_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        warning_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        warning_diagnostic = { fg = p.tab_fg, bg = p.tab_bg },
         warning_diagnostic_selected = { fg = p.tab_fg, bg = p.tab_sel },
-        warning_diagnostic_visible  = { fg = p.tab_fg, bg = p.tab_bg },
-        info                      = { fg = p.tab_fg, bg = p.tab_bg },
-        info_selected             = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
-        info_visible              = { fg = p.tab_fg, bg = p.tab_bg },
-        info_diagnostic          = { fg = p.tab_fg, bg = p.tab_bg },
+        warning_diagnostic_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        info = { fg = p.tab_fg, bg = p.tab_bg },
+        info_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        info_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        info_diagnostic = { fg = p.tab_fg, bg = p.tab_bg },
         info_diagnostic_selected = { fg = p.tab_fg, bg = p.tab_sel },
-        info_diagnostic_visible  = { fg = p.tab_fg, bg = p.tab_bg },
-        hint                      = { fg = p.tab_fg, bg = p.tab_bg },
-        hint_selected             = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
-        hint_visible              = { fg = p.tab_fg, bg = p.tab_bg },
-        hint_diagnostic          = { fg = p.tab_fg, bg = p.tab_bg },
+        info_diagnostic_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        hint = { fg = p.tab_fg, bg = p.tab_bg },
+        hint_selected = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        hint_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        hint_diagnostic = { fg = p.tab_fg, bg = p.tab_bg },
         hint_diagnostic_selected = { fg = p.tab_fg, bg = p.tab_sel },
-        hint_diagnostic_visible  = { fg = p.tab_fg, bg = p.tab_bg },
-        trunc_marker              = { fg = p.tab_fg, bg = p.tab_bg },
-        offset_separator          = { fg = p.tab_bg, bg = p.tab_bg },
+        hint_diagnostic_visible = { fg = p.tab_fg, bg = p.tab_bg },
+        trunc_marker = { fg = p.tab_fg, bg = p.tab_bg },
+        offset_separator = { fg = p.tab_bg, bg = p.tab_bg },
       },
     },
     keys = {
-      { "<Tab>",       "<cmd>BufferLineCycleNext<cr>", desc = "Next tab" },
-      { "<S-Tab>",     "<cmd>BufferLineCyclePrev<cr>", desc = "Prev tab" },
+      { "<Tab>", "<cmd>BufferLineCycleNext<cr>", desc = "Next tab" },
+      { "<S-Tab>", "<cmd>BufferLineCyclePrev<cr>", desc = "Prev tab" },
       -- BUG-018: bwipe instead of bdelete — removes the buffer entry entirely so
       -- _remote_bufnr() cannot find a ghost unlisted buffer on the next open.
-      { "<leader>q",   "<cmd>bwipe<cr>",               desc = "Close tab" },
-      { "<leader>tb",  function()
+      { "<leader>q", "<cmd>bwipe<cr>", desc = "Close tab" },
+      {
+        "<leader>tb",
+        function()
           vim.o.showtabline = vim.o.showtabline == 2 and 1 or 2
           vim.cmd("redrawtabline")
-        end, desc = "Toggle tab bar" },
+        end,
+        desc = "Toggle tab bar",
+      },
     },
     config = function(_, opts)
       require("bufferline").setup(opts)
       -- Force a tabline redraw so bufferline renders immediately on startup
       -- without requiring a keypress (Tab) to trigger the first render.
       -- defer_fn gives the UI time to fully initialise before redrawing.
-      vim.defer_fn(function() vim.cmd("redrawtabline") end, 50)
+      vim.defer_fn(function()
+        vim.cmd("redrawtabline")
+      end, 50)
       -- BUG-018: when files are opened from the treemux sidebar, nvim receives
       -- a raw RPC command (tabnew / edit / buffer N).  BufAdd/TabNew fire for
       -- genuinely new buffers/tabs, but the dedup path sends `buffer N` which
@@ -510,8 +582,10 @@ require("lazy").setup({
       -- fires BufEnter.  Including BufEnter covers all three code paths without
       -- meaningful overhead — redrawtabline is cheap and idempotent.
       vim.api.nvim_create_autocmd({ "BufAdd", "BufEnter", "TabNew" }, {
-        desc     = "BUG-018: force bufferline redraw after RPC-triggered buffer/tab open",
-        callback = function() vim.cmd("redrawtabline") end,
+        desc = "BUG-018: force bufferline redraw after RPC-triggered buffer/tab open",
+        callback = function()
+          vim.cmd("redrawtabline")
+        end,
       })
     end,
   },
@@ -523,7 +597,7 @@ require("lazy").setup({
     opts = {
       pickers = {
         find_files = { hidden = true, no_ignore_vcs = true, follow = true },
-        live_grep  = { additional_args = { "--hidden", "--no-ignore-vcs", "--glob", "!**/.git/*" } },
+        live_grep = { additional_args = { "--hidden", "--no-ignore-vcs", "--glob", "!**/.git/*" } },
       },
     },
     config = function(_, opts)
@@ -542,7 +616,6 @@ require("lazy").setup({
     event = "VeryLazy",
     opts = {},
   },
-
 
   -- Lazygit inside nvim
   {
@@ -568,17 +641,21 @@ require("lazy").setup({
             for _ = 1, 30 do
               local stat = vim.uv.fs_stat(dir .. "/.git")
               if stat then
-                return dir, stat.type  -- "file" = worktree, "directory" = normal repo
+                return dir, stat.type -- "file" = worktree, "directory" = normal repo
               end
               local parent = vim.fn.fnamemodify(dir, ":h")
-              if parent == dir then break end
+              if parent == dir then
+                break
+              end
               dir = parent
             end
             return nil, nil
           end
 
           local buf_dir = vim.fn.expand("%:p:h")
-          if buf_dir == "" then buf_dir = vim.fn.getcwd() end
+          if buf_dir == "" then
+            buf_dir = vim.fn.getcwd()
+          end
 
           local work_tree, git_type = find_git_root(buf_dir)
 
@@ -594,8 +671,11 @@ require("lazy").setup({
             local git_dir
             if git_type == "file" then
               -- Worktree: .git file contains "gitdir: <path>" — ask git for the real dir
-              git_dir = vim.fn.system("git -C " .. vim.fn.shellescape(work_tree) .. " rev-parse --git-dir"):gsub("%s+$", "")
-              if vim.v.shell_error ~= 0 then git_dir = nil end
+              git_dir =
+                vim.fn.system("git -C " .. vim.fn.shellescape(work_tree) .. " rev-parse --git-dir"):gsub("%s+$", "")
+              if vim.v.shell_error ~= 0 then
+                git_dir = nil
+              end
             else
               -- Normal repo: .git is a directory directly inside work_tree
               git_dir = work_tree .. "/.git"
@@ -636,7 +716,7 @@ require("lazy").setup({
   },
 
   -- Auto-close brackets, quotes, etc.
-  { "echasnovski/mini.pairs",      opts = {} },
+  { "echasnovski/mini.pairs", opts = {} },
   { "echasnovski/mini.cursorword", opts = {} },
 
   -- Session save/restore (per working directory, auto-saves on exit)
@@ -645,16 +725,36 @@ require("lazy").setup({
     event = "BufReadPre",
     opts = {},
     keys = {
-      { "<leader>sl", function() require("persistence").load({ last = true }) end, desc = "Restore last session" },
-      { "<leader>ss", function() require("persistence").load() end,               desc = "Restore session for cwd" },
-      { "<leader>sd", function() require("persistence").stop() end,               desc = "Don't save session on exit" },
+      {
+        "<leader>sl",
+        function()
+          require("persistence").load({ last = true })
+        end,
+        desc = "Restore last session",
+      },
+      {
+        "<leader>ss",
+        function()
+          require("persistence").load()
+        end,
+        desc = "Restore session for cwd",
+      },
+      {
+        "<leader>sd",
+        function()
+          require("persistence").stop()
+        end,
+        desc = "Don't save session on exit",
+      },
     },
   },
 
   -- Statusline content provider (hidden via laststatus=0, piped to tmux by tpipeline)
   {
     "echasnovski/mini.statusline",
-    config = function() _G.setup_statusline() end,
+    config = function()
+      _G.setup_statusline()
+    end,
   },
 
   -- Embed nvim statusline into the tmux bar (mode, filename, LSP info across all panes)
@@ -697,14 +797,22 @@ require("lazy").setup({
       ]])
     end,
     keys = {
-      { "<leader>mp", function()
+      {
+        "<leader>mp",
+        function()
           vim.cmd("MarkdownPreview")
           vim.fn.jobstart({ "notify-send", "Markdown Preview", "Preview opened" })
-        end, desc = "Markdown preview open" },
-      { "<leader>ms", function()
+        end,
+        desc = "Markdown preview open",
+      },
+      {
+        "<leader>ms",
+        function()
           vim.cmd("MarkdownPreviewStop")
           vim.fn.jobstart({ "notify-send", "Markdown Preview", "Preview stopped" })
-        end, desc = "Markdown preview stop" },
+        end,
+        desc = "Markdown preview stop",
+      },
     },
   },
 
@@ -715,8 +823,18 @@ require("lazy").setup({
     config = function()
       require("nvim-treesitter.config").setup({
         ensure_installed = {
-          "lua", "python", "bash", "json", "jsonc", "toml", "yaml", "ini",
-          "css", "markdown", "markdown_inline", "go",
+          "lua",
+          "python",
+          "bash",
+          "json",
+          "jsonc",
+          "toml",
+          "yaml",
+          "ini",
+          "css",
+          "markdown",
+          "markdown_inline",
+          "go",
         },
         auto_install = true,
         highlight = { enable = true },
@@ -765,7 +883,7 @@ require("lazy").setup({
         callback = function(event)
           local opts = { buffer = event.buf }
           vim.keymap.set("n", "gd", vim.lsp.buf.definition, opts)
-          vim.keymap.set("n", "K",  vim.lsp.buf.hover, opts)
+          vim.keymap.set("n", "K", vim.lsp.buf.hover, opts)
           vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, opts)
           vim.keymap.set("n", "<leader>ca", vim.lsp.buf.code_action, opts)
           vim.keymap.set("n", "gr", vim.lsp.buf.references, opts)
@@ -783,7 +901,13 @@ require("lazy").setup({
     "stevearc/conform.nvim",
     event = "BufWritePre",
     keys = {
-      { "<leader>F", function() require("conform").format({ async = true }) end, desc = "Format buffer" },
+      {
+        "<leader>F",
+        function()
+          require("conform").format({ async = true })
+        end,
+        desc = "Format buffer",
+      },
     },
     opts = {
       formatters_by_ft = {},
@@ -843,9 +967,15 @@ require("lazy").setup({
           dapui.setup()
           -- Auto-open/close the UI when a session starts/ends
           local dap = require("dap")
-          dap.listeners.after.event_initialized["dapui_config"]  = function() dapui.open() end
-          dap.listeners.before.event_terminated["dapui_config"]  = function() dapui.close() end
-          dap.listeners.before.event_exited["dapui_config"]      = function() dapui.close() end
+          dap.listeners.after.event_initialized["dapui_config"] = function()
+            dapui.open()
+          end
+          dap.listeners.before.event_terminated["dapui_config"] = function()
+            dapui.close()
+          end
+          dap.listeners.before.event_exited["dapui_config"] = function()
+            dapui.close()
+          end
         end,
       },
       {
@@ -858,17 +988,69 @@ require("lazy").setup({
       },
     },
     keys = {
-      { "<leader>dc", function() require("dap").continue() end,          desc = "Debug: continue" },
-      { "<leader>db", function() require("dap").toggle_breakpoint() end, desc = "Debug: toggle breakpoint" },
-      { "<leader>dB", function()
+      {
+        "<leader>dc",
+        function()
+          require("dap").continue()
+        end,
+        desc = "Debug: continue",
+      },
+      {
+        "<leader>db",
+        function()
+          require("dap").toggle_breakpoint()
+        end,
+        desc = "Debug: toggle breakpoint",
+      },
+      {
+        "<leader>dB",
+        function()
           require("dap").set_breakpoint(vim.fn.input("Condition: "))
-        end, desc = "Debug: conditional breakpoint" },
-      { "<leader>di", function() require("dap").step_into() end,  desc = "Debug: step into" },
-      { "<leader>do", function() require("dap").step_over() end,  desc = "Debug: step over" },
-      { "<leader>dO", function() require("dap").step_out() end,   desc = "Debug: step out" },
-      { "<leader>dr", function() require("dap").repl.open() end,  desc = "Debug: open REPL" },
-      { "<leader>dq", function() require("dap").terminate() end,  desc = "Debug: terminate" },
-      { "<leader>du", function() require("dapui").toggle() end,   desc = "Debug: toggle UI" },
+        end,
+        desc = "Debug: conditional breakpoint",
+      },
+      {
+        "<leader>di",
+        function()
+          require("dap").step_into()
+        end,
+        desc = "Debug: step into",
+      },
+      {
+        "<leader>do",
+        function()
+          require("dap").step_over()
+        end,
+        desc = "Debug: step over",
+      },
+      {
+        "<leader>dO",
+        function()
+          require("dap").step_out()
+        end,
+        desc = "Debug: step out",
+      },
+      {
+        "<leader>dr",
+        function()
+          require("dap").repl.open()
+        end,
+        desc = "Debug: open REPL",
+      },
+      {
+        "<leader>dq",
+        function()
+          require("dap").terminate()
+        end,
+        desc = "Debug: terminate",
+      },
+      {
+        "<leader>du",
+        function()
+          require("dapui").toggle()
+        end,
+        desc = "Debug: toggle UI",
+      },
     },
   },
 
@@ -884,24 +1066,21 @@ require("lazy").setup({
       local cmp = require("cmp")
       cmp.setup({
         mapping = cmp.mapping.preset.insert({
-          ["<C-Space>"] = cmp.mapping.complete(),  -- trigger completion manually
-          ["<CR>"]      = cmp.mapping.confirm({ select = true }),
-          ["<Tab>"]     = cmp.mapping.select_next_item(),
-          ["<S-Tab>"]   = cmp.mapping.select_prev_item(),
-          ["<C-e>"]     = cmp.mapping.abort(),
+          ["<C-Space>"] = cmp.mapping.complete(), -- trigger completion manually
+          ["<CR>"] = cmp.mapping.confirm({ select = true }),
+          ["<Tab>"] = cmp.mapping.select_next_item(),
+          ["<S-Tab>"] = cmp.mapping.select_prev_item(),
+          ["<C-e>"] = cmp.mapping.abort(),
         }),
         sources = cmp.config.sources({
-          { name = "nvim_lsp" },  -- LSP suggestions
-          { name = "buffer" },    -- words from current buffer
-          { name = "path" },      -- filesystem paths
+          { name = "nvim_lsp" }, -- LSP suggestions
+          { name = "buffer" }, -- words from current buffer
+          { name = "path" }, -- filesystem paths
         }),
       })
     end,
   },
 })
-
-
-
 
 -- ============================================================
 -- APPEARANCE
@@ -918,87 +1097,87 @@ function _G.apply_palette()
     vim.notify("palette.lua error: " .. tostring(fresh), vim.log.levels.ERROR)
     return
   end
-  p = fresh  -- update the module-level variable used by setup_statusline()
+  p = fresh -- update the module-level variable used by setup_statusline()
 
-  vim.api.nvim_set_hl(0, "Normal",      { bg = p.none })
+  vim.api.nvim_set_hl(0, "Normal", { bg = p.none })
   vim.api.nvim_set_hl(0, "NormalFloat", { bg = p.none })
-  vim.api.nvim_set_hl(0, "GitSignsAdd",      { fg = p.git_add })
-  vim.api.nvim_set_hl(0, "GitSignsDelete",   { fg = p.git_del })
+  vim.api.nvim_set_hl(0, "GitSignsAdd", { fg = p.git_add })
+  vim.api.nvim_set_hl(0, "GitSignsDelete", { fg = p.git_del })
   vim.api.nvim_set_hl(0, "GitSignsDeleteLn", { bg = p.git_del_ln })
-  vim.api.nvim_set_hl(0, "GitSignsChange",       { fg = p.git_chg })
-  vim.api.nvim_set_hl(0, "GitSignsChangeLn",     { bg = p.git_chg_ln })
+  vim.api.nvim_set_hl(0, "GitSignsChange", { fg = p.git_chg })
+  vim.api.nvim_set_hl(0, "GitSignsChangeLn", { bg = p.git_chg_ln })
   vim.api.nvim_set_hl(0, "NvimTreeGitDirtyIcon", { fg = p.git_dot })
-  vim.api.nvim_set_hl(0, "NvimTreeGitStagedIcon",{ fg = p.git_dot })
+  vim.api.nvim_set_hl(0, "NvimTreeGitStagedIcon", { fg = p.git_dot })
   vim.api.nvim_set_hl(0, "Cursor", { fg = p.cursor_fg, bg = p.purple })
-  vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo",        { fg = p.fg, bg = p.blue })
-  vim.api.nvim_set_hl(0, "MiniStatuslineFilename",       { fg = p.fg, bg = p.lavender })
-  vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo",       { fg = p.fg, bg = p.blue })
-  vim.api.nvim_set_hl(0, "MiniStatuslineInactive",       { fg = p.fg, bg = p.lavender })
-  vim.api.nvim_set_hl(0, "StatusSepDevinfoToFilename",   { fg = p.blue, bg = p.lavender })
+  vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo", { fg = p.fg, bg = p.blue })
+  vim.api.nvim_set_hl(0, "MiniStatuslineFilename", { fg = p.fg, bg = p.lavender })
+  vim.api.nvim_set_hl(0, "MiniStatuslineFileinfo", { fg = p.fg, bg = p.blue })
+  vim.api.nvim_set_hl(0, "MiniStatuslineInactive", { fg = p.fg, bg = p.lavender })
+  vim.api.nvim_set_hl(0, "StatusSepDevinfoToFilename", { fg = p.blue, bg = p.lavender })
   vim.opt.guicursor = "n-v-c:block-Cursor,i-ci-ve:ver25-Cursor"
 
   -- Re-apply bufferline highlights from updated palette.
   -- bufferline.nvim exposes no runtime highlight update API, but overwriting
   -- the highlight groups directly takes effect immediately on the next redraw.
   local hl = vim.api.nvim_set_hl
-  hl(0, "BufferLineFill",                      { bg = p.tab_bg })
-  hl(0, "BufferLineBackground",                { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineTab",                       { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineTabSelected",               { fg = p.tab_fg, bg = p.tab_sel, bold = true })
-  hl(0, "BufferLineTabSeparator",              { fg = p.tab_bg, bg = p.tab_bg })
-  hl(0, "BufferLineTabSeparatorSelected",      { fg = p.tab_sel, bg = p.tab_sel })
-  hl(0, "BufferLineTabClose",                  { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineSeparator",                 { fg = p.tab_bg, bg = p.tab_bg })
-  hl(0, "BufferLineSeparatorSelected",         { fg = p.tab_sel, bg = p.tab_sel })
-  hl(0, "BufferLineSeparatorVisible",          { fg = p.tab_bg, bg = p.tab_bg })
+  hl(0, "BufferLineFill", { bg = p.tab_bg })
+  hl(0, "BufferLineBackground", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineTab", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineTabSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true })
+  hl(0, "BufferLineTabSeparator", { fg = p.tab_bg, bg = p.tab_bg })
+  hl(0, "BufferLineTabSeparatorSelected", { fg = p.tab_sel, bg = p.tab_sel })
+  hl(0, "BufferLineTabClose", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineSeparator", { fg = p.tab_bg, bg = p.tab_bg })
+  hl(0, "BufferLineSeparatorSelected", { fg = p.tab_sel, bg = p.tab_sel })
+  hl(0, "BufferLineSeparatorVisible", { fg = p.tab_bg, bg = p.tab_bg })
   -- nocombine: prevents LSP/treesitter semantic tokens from bleeding their
   -- fg color over the buffer name text in the tab bar (BUG-021).
-  hl(0, "BufferLineBufferSelected",            { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
-  hl(0, "BufferLineBufferVisible",             { fg = p.tab_fg, bg = p.tab_bg, nocombine = true })
-  hl(0, "BufferLineCloseButton",               { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineCloseButtonSelected",       { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineCloseButtonVisible",        { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineModified",                  { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineModifiedSelected",          { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineModifiedVisible",           { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineDuplicate",                 { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineDuplicateSelected",         { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineDuplicateVisible",          { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineIndicatorSelected",         { fg = p.tab_sel, bg = p.tab_sel })
-  hl(0, "BufferLineIndicatorVisible",          { fg = p.tab_bg, bg = p.tab_bg })
-  hl(0, "BufferLineNumbers",                   { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineNumbersSelected",           { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineNumbersVisible",            { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineDiagnostic",                { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineDiagnosticSelected",        { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineDiagnosticVisible",         { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineBufferSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineBufferVisible", { fg = p.tab_fg, bg = p.tab_bg, nocombine = true })
+  hl(0, "BufferLineCloseButton", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineCloseButtonSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineCloseButtonVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineModified", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineModifiedSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineModifiedVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineDuplicate", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineDuplicateSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineDuplicateVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineIndicatorSelected", { fg = p.tab_sel, bg = p.tab_sel })
+  hl(0, "BufferLineIndicatorVisible", { fg = p.tab_bg, bg = p.tab_bg })
+  hl(0, "BufferLineNumbers", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineNumbersSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineNumbersVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineDiagnostic", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineDiagnosticSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineDiagnosticVisible", { fg = p.tab_fg, bg = p.tab_bg })
   -- Per-severity: prevents LSP diagnostic colors tinting the buffer name (BUG-021)
-  hl(0, "BufferLineError",                      { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineErrorSelected",              { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
-  hl(0, "BufferLineErrorVisible",               { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineErrorDiagnostic",            { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineErrorDiagnosticSelected",    { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineErrorDiagnosticVisible",     { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineWarning",                    { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineWarningSelected",            { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
-  hl(0, "BufferLineWarningVisible",             { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineWarningDiagnostic",          { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineWarningDiagnosticSelected",  { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineWarningDiagnosticVisible",   { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineInfo",                       { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineInfoSelected",               { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
-  hl(0, "BufferLineInfoVisible",                { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineInfoDiagnostic",             { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineInfoDiagnosticSelected",     { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineInfoDiagnosticVisible",      { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineHint",                       { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineHintSelected",               { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
-  hl(0, "BufferLineHintVisible",                { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineHintDiagnostic",             { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineHintDiagnosticSelected",     { fg = p.tab_fg, bg = p.tab_sel })
-  hl(0, "BufferLineHintDiagnosticVisible",      { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineTruncMarker",               { fg = p.tab_fg, bg = p.tab_bg })
-  hl(0, "BufferLineOffsetSeparator",           { fg = p.tab_bg, bg = p.tab_bg })
+  hl(0, "BufferLineError", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineErrorSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineErrorVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineErrorDiagnostic", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineErrorDiagnosticSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineErrorDiagnosticVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineWarning", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineWarningSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineWarningVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineWarningDiagnostic", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineWarningDiagnosticSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineWarningDiagnosticVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineInfo", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineInfoSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineInfoVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineInfoDiagnostic", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineInfoDiagnosticSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineInfoDiagnosticVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineHint", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineHintSelected", { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineHintVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineHintDiagnostic", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineHintDiagnosticSelected", { fg = p.tab_fg, bg = p.tab_sel })
+  hl(0, "BufferLineHintDiagnosticVisible", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineTruncMarker", { fg = p.tab_fg, bg = p.tab_bg })
+  hl(0, "BufferLineOffsetSeparator", { fg = p.tab_bg, bg = p.tab_bg })
 
   vim.cmd("redrawtabline")
 end
@@ -1013,9 +1192,9 @@ vim.diagnostic.config({
   signs = {
     text = {
       [vim.diagnostic.severity.ERROR] = "󰅖",
-      [vim.diagnostic.severity.WARN]  = "󰀪",
-      [vim.diagnostic.severity.INFO]  = "󰋽",
-      [vim.diagnostic.severity.HINT]  = "󰌶",
+      [vim.diagnostic.severity.WARN] = "󰀪",
+      [vim.diagnostic.severity.INFO] = "󰋽",
+      [vim.diagnostic.severity.HINT] = "󰌶",
     },
   },
   virtual_text = true,
@@ -1042,13 +1221,17 @@ vim.api.nvim_create_autocmd("FileType", {
 -- signal that external state (git, filesystem) may have changed.
 vim.api.nvim_create_autocmd({ "FocusGained" }, {
   pattern = "*",
-  callback = function() sync.sync() end,
+  callback = function()
+    sync.sync()
+  end,
 })
 
 -- Also fire when a terminal buffer closes (catches lazygit float exit directly)
 vim.api.nvim_create_autocmd("TermClose", {
   pattern = "*",
-  callback = function() sync.sync() end,
+  callback = function()
+    sync.sync()
+  end,
 })
 
 -- Lightweight checktime only on high-frequency events — avoids constant
@@ -1057,7 +1240,9 @@ vim.api.nvim_create_autocmd("TermClose", {
 -- by opencode) without triggering a full git-state repaint.
 vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI" }, {
   pattern = "*",
-  callback = function() sync.checktime() end,
+  callback = function()
+    sync.checktime()
+  end,
 })
 
 -- Bust aidignore cache and restart file watcher when cwd changes so
@@ -1074,7 +1259,7 @@ vim.api.nvim_create_autocmd("DirChanged", {
 -- before VimEnter fires regardless of when nvim-tree's lazy load triggers.
 vim.api.nvim_create_autocmd("VimEnter", {
   callback = function(data)
-    local is_file  = vim.fn.filereadable(data.file) == 1
+    local is_file = vim.fn.filereadable(data.file) == 1
     local is_empty = data.file == "" and vim.bo[data.buf].buftype == ""
     if (is_file or is_empty) and not vim.o.diff then
       -- Outside tmux: use nvim-tree directly (in tmux, treemux sidebar is
@@ -1099,12 +1284,16 @@ vim.api.nvim_create_autocmd("VimEnter", {
 -- Watch each buffer's directory as it's entered, so opencode edits to any
 -- open file are picked up immediately without requiring a pane switch.
 vim.api.nvim_create_autocmd("BufEnter", {
-  callback = function(ev) sync.watch_buf(ev.buf) end,
+  callback = function(ev)
+    sync.watch_buf(ev.buf)
+  end,
 })
 
 -- Clean up all fs_event handles on exit to avoid libuv handle leak warnings.
 vim.api.nvim_create_autocmd("VimLeave", {
-  callback = function() sync.stop_watchers() end,
+  callback = function()
+    sync.stop_watchers()
+  end,
 })
 
 -- Re-apply palette after any event that can reset highlight groups.
@@ -1115,11 +1304,14 @@ vim.api.nvim_create_autocmd("VimLeave", {
 -- where LSP servers first attach and can overwrite hl groups (BUG-021).
 vim.api.nvim_create_autocmd("ColorScheme", {
   desc = "BUG-021: re-apply palette after colorscheme resets hl groups",
-  callback = function() apply_palette() end,
+  callback = function()
+    apply_palette()
+  end,
 })
 vim.api.nvim_create_autocmd("VimEnter", {
   once = true,
   desc = "BUG-021: re-apply palette once after all plugins and LSP servers have initialised",
-  callback = function() vim.defer_fn(apply_palette, 500) end,
+  callback = function()
+    vim.defer_fn(apply_palette, 500)
+  end,
 })
-
