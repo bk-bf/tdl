@@ -1,3 +1,4 @@
+<!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
 # Agents.md — AI coding agent reference for aid
 
 ## Agent rules
@@ -54,8 +55,8 @@ aid is fully isolated from the user's existing nvim and tmux setup. Nothing is s
 | Component | Isolation mechanism |
 |---|---|
 | tmux | Dedicated server socket: `tmux -L aid -f <AID_DIR>/tmux.conf` |
-| main nvim | `XDG_CONFIG_HOME=$AID_DIR` + `NVIM_APPNAME=nvim` → config at `$AID_DIR/nvim` (no symlink needed) |
-| sidebar nvim | `XDG_CONFIG_HOME=$AID_DIR` + `NVIM_APPNAME=treemux` — treemux resolves to `~/.config/aid/treemux` symlink → `aid/nvim-treemux/` |
+| main nvim | `XDG_CONFIG_HOME=$AID_DIR` (inline on respawn-pane) + `NVIM_APPNAME=nvim` → config at `$AID_DIR/nvim` (no symlink needed) |
+| sidebar nvim | `XDG_CONFIG_HOME=~/.config/aid` + `NVIM_APPNAME=treemux` → config at `~/.config/aid/treemux` symlink → `aid/nvim-treemux/` |
 | opencode | `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` → `aid/opencode/`, not `~/.config/opencode` |
 | install.sh | Does **not** inject into `~/.config/tmux/.tmux.conf` or `~/.bashrc` |
 | aid.sh | Standalone script in `~/.local/bin/aid` — no shell function injection |
@@ -68,8 +69,6 @@ aid is fully isolated from the user's existing nvim and tmux setup. Nothing is s
 |---|---|
 | `aid.sh` | `~/.local/bin/aid` |
 | `nvim-treemux/` | `~/.config/aid/treemux` |
-| `nvim-treemux/watch_and_update.sh` | `~/.config/tmux/plugins/treemux/scripts/tree/watch_and_update.sh` |
-| `ensure_treemux.sh` | `~/.config/tmux/ensure_treemux.sh` |
 
 `aid.sh` is a standalone script in PATH (not sourced). `tmux.conf` is loaded via `-f` on the dedicated server socket (not sourced from the user's tmux config). Main nvim (`NVIM_APPNAME=nvim`) resolves config directly to `$AID_DIR/nvim` via `XDG_CONFIG_HOME=$AID_DIR` — no symlink in `~/.config/` required.
 
