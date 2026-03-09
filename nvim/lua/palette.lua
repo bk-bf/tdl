@@ -15,7 +15,7 @@ local M = {}
 
 -- ── Core accent palette ───────────────────────────────────────────────────
 M.purple      = "#b57bee"   -- accent: cursor, mode segment, session name bg
-M.blue        = "#6181C6"   -- secondary: devinfo / fileinfo segment bg, tmux base
+M.blue        = "#6180C5"   -- secondary: devinfo / fileinfo segment bg, tmux base
 M.lavender    = "#A284C6"   -- tertiary: filename segment bg, tmux time bg
 
 -- ── Bufferline (tab bar) ─────────────────────────────────────────────────
@@ -27,6 +27,7 @@ M.tab_fg      = "#ffffff"   -- all tab foreground text
 M.git_add     = "#50fa7b"   -- added line sign (Dracula green)
 M.git_del     = "#ff5555"   -- deleted line sign (Dracula red)
 M.git_chg     = "#ffaa00"   -- changed line sign (amber)
+M.git_dot     = "#C09EFC"   -- treemux git status dot decorator
 M.git_del_ln  = "#3d1a1a"   -- deleted line background
 M.git_chg_ln  = "#3d2a00"   -- changed line background
 

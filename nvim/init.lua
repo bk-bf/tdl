@@ -96,7 +96,7 @@ vim.keymap.set("n", "<leader>?", _cs_open, { desc = "Open cheatsheet" })
 -- ============================================================
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not vim.loop.fs_stat(lazypath) then
-  vim.fn.system({ "git", "clone", "--filter=blob:none",
+  vim.fn.system({ "git", "clone",
     "https://github.com/folke/lazy.nvim.git", lazypath })
 end
 vim.opt.rtp:prepend(lazypath)
@@ -623,7 +623,7 @@ require("lazy").setup({
   -- Markdown browser preview (<leader>mp to open, <leader>ms to stop)
   {
     "iamcco/markdown-preview.nvim",
-    build = "cd app && npm install",
+    build = "cd app && npm install && git restore .",
     ft = { "markdown" },
     keys = {
       { "<leader>mp", function()

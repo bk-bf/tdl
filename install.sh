@@ -7,13 +7,9 @@
 # aid never touches ~/.config/nvim or ~/.config/tmux/.tmux.conf.
 # Main editor config is resolved directly at launch time:
 #   XDG_CONFIG_HOME=$AID_DIR, NVIM_APPNAME=nvim → $AID_DIR/nvim (no symlink)
-# Runtime artefacts (plugin data, state, cache) go to standard XDG locations
-# under an aid-specific namespace — not inside the source tree:
-#   XDG_DATA_HOME=~/.local/share/aid  → ~/.local/share/aid/nvim/
-#   XDG_STATE_HOME=~/.local/state/aid → ~/.local/state/aid/nvim/
-#   XDG_CACHE_HOME=~/.cache/aid       → ~/.cache/aid/nvim/
-# Sidebar still uses a symlink (treemux lives outside $AID_DIR):
+# Sidebar uses a symlink for its config (nvim-treemux lives outside $AID_DIR):
 #   ~/.config/aid/treemux → aid/nvim-treemux/ (sidebar, NVIM_APPNAME=treemux)
+# tmux plugins land in $AID_DIR/tmux/plugins/ (never ~/.config/tmux/plugins/).
 # tmux runs on a dedicated server socket (tmux -L aid) with -f pointing directly
 # at aid/tmux.conf, so the user's existing tmux setup is never loaded or modified.
 # TPM and all tmux plugins are installed under $AID/tmux/plugins/ — not in
@@ -43,18 +39,18 @@ else
   echo "==> TPM already present"
 fi
 
-# ── 3. Treemux plugin (via TPM headless install) ──────────────────────────────
+# ── 3. Treemux plugin ────────────────────────────────────────────────────────
+# Clone directly — TPM's headless install_plugins reads @plugin options from a
+# running tmux server and a bare server (no tmux.conf loaded) has none set.
 TREEMUX_DIR="$AID/tmux/plugins/treemux"
 if [[ ! -d "$TREEMUX_DIR" ]]; then
-  echo "==> Installing treemux via TPM..."
-  # TPM headless install requires a running tmux server.
-  # Use the isolated aid tmux socket so we never touch the user's tmux setup.
-  tmux -L aid -f "$AID/tmux.conf" new-session -d -s _aid_install 2>/dev/null || true
-  TMUX_PLUGIN_MANAGER_PATH="$AID/tmux/plugins/" \
-    "$TPM_DIR/bin/install_plugins"
-  tmux -L aid kill-session -t _aid_install 2>/dev/null || true
+  echo "==> Installing treemux..."
+  git clone https://github.com/kiyoon/treemux "$TREEMUX_DIR"
+  # Patch treemux's watch script with our custom version
+  ln -sf "$AID/nvim-treemux/watch_and_update.sh" \
+         "$TREEMUX_DIR/scripts/tree/watch_and_update.sh"
 else
-  echo "==> treemux plugin already present"
+  echo "==> treemux already present"
 fi
 
 # ── 4. Symlinks ───────────────────────────────────────────────────────────────
@@ -75,13 +71,7 @@ fi
 ln -sfn "$AID/nvim-treemux" "$AID_CONFIG/treemux"
 echo "  $AID_CONFIG/treemux -> $AID/nvim-treemux"
 
-# treemux plugin's watch script → our custom version
-# The symlink keeps $CURRENT_DIR (dirname $BASH_SOURCE[0]) pointing to the
-# plugin's scripts/tree/ directory so sibling Python helpers are found correctly.
-ln -sf "$AID/nvim-treemux/watch_and_update.sh" \
-       "$TREEMUX_DIR/scripts/tree/watch_and_update.sh"
-
-# ── 5. nvim plugin bootstrap (headless lazy sync) ─────────────────────────────
+# ── 5. nvim plugin bootstrap (headless lazy sync) ────────────────────────────
 _spin() {
   local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 msg="$1"
   while kill -0 "$2" 2>/dev/null; do
@@ -93,14 +83,14 @@ _spin() {
 
 echo "==> Bootstrapping treemux sidebar plugins (lazy sync)..."
 XDG_CONFIG_HOME="$AID_CONFIG" XDG_DATA_HOME="$HOME/.local/share/aid" XDG_STATE_HOME="$HOME/.local/state/aid" XDG_CACHE_HOME="$HOME/.cache/aid" \
-  NVIM_APPNAME=treemux nvim --headless "+Lazy! sync" +qa 2>/dev/null &
+  NVIM_APPNAME=treemux nvim --headless "+Lazy! sync" +qa &
 _nvim_pid=$!
 _spin "syncing treemux plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
 
 echo "==> Bootstrapping main nvim plugins (lazy sync)..."
 XDG_CONFIG_HOME="$AID" XDG_DATA_HOME="$HOME/.local/share/aid" XDG_STATE_HOME="$HOME/.local/state/aid" XDG_CACHE_HOME="$HOME/.cache/aid" \
-  NVIM_APPNAME=nvim nvim --headless "+Lazy! sync" +qa 2>/dev/null &
+  NVIM_APPNAME=nvim nvim --headless "+Lazy! sync" +qa &
 _nvim_pid=$!
 _spin "syncing nvim plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
