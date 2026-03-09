@@ -6,6 +6,7 @@
 - **Never commit or push to git unprompted.** Always wait for the user to explicitly ask, or for a slash command (e.g. `/commit`) to trigger it. This applies even when completing a large task — finish all code changes, then stop and wait. The user may have staged changes of their own that must not be conflated into your commit.
 - **Roadmap task references**: open tasks in `docs/ROADMAP.md` are numbered `T-NNN` (e.g. `T-002`). When referencing a roadmap item in code comments, ADRs, bug notes, or commit messages, use the task number, not a description.
 - **Date format**: always use `YYYY-MM-DD` (e.g. `2026-03-09`). Never use `YYYY-MM` alone. This applies everywhere: ADR `**Date**` fields, bug report `**First appeared**` / `**Fixed**` fields, roadmap `## Done` entries (`- [x] **YYYY-MM-DD**: ...`), LOC cap `updated:` comments, and archive filenames (`BUGS-YYYY-MM-DD.md`, `DECISIONS-YYYY-MM-DD.md`).
+- **No architecture content in this file.** This file is orientation only. All architecture detail lives in `docs/` — see the reference section at the bottom. Do not add environment variables, pane layouts, plugin lists, isolation mechanisms, symlink maps, or boot/session sequences here. If you find yourself writing that kind of content, put it in `docs/ARCHITECTURE.md` instead.
 
 ## What this repo is
 
@@ -47,107 +48,13 @@ aid/                            ← bare git repo root
     └── BUGS.md
 ```
 
-## Environment isolation (ADR-006)
+## Documentation
 
-aid is fully isolated from the user's existing nvim and tmux setup. Nothing is shared.
+All architecture detail lives in the `docs/` worktree (`dev-docs` branch). Start here:
 
-
-| Component | Isolation mechanism |
+| File | Contents |
 |---|---|
-| tmux | Dedicated server socket: `tmux -L aid -f <AID_DIR>/tmux.conf` |
-| main nvim | `XDG_CONFIG_HOME=$AID_DIR` (inline on respawn-pane) + `NVIM_APPNAME=nvim` → config at `$AID_DIR/nvim` (no symlink needed) |
-| sidebar nvim | `XDG_CONFIG_HOME=~/.config/aid` + `NVIM_APPNAME=treemux` → config at `~/.config/aid/treemux` symlink → `aid/nvim-treemux/` |
-| opencode | `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` → `aid/opencode/`, not `~/.config/opencode` |
-| install.sh | Does **not** inject into `~/.config/tmux/.tmux.conf` or `~/.bashrc` |
-| aid.sh | Standalone script in `~/.local/bin/aid` — no shell function injection |
-
-`~/.config/nvim` is never touched. All `tmux` calls in scripts use `tmux -L aid`.
-
-## Symlink map (created by install.sh)
-
-| Repo path | Symlinked to |
-|---|---|
-| `aid.sh` | `~/.local/bin/aid` |
-| `nvim-treemux/` | `~/.config/aid/treemux` |
-
-`aid.sh` is a standalone script in PATH (not sourced). `tmux.conf` is loaded via `-f` on the dedicated server socket (not sourced from the user's tmux config). Main nvim (`NVIM_APPNAME=nvim`) resolves config directly to `$AID_DIR/nvim` via `XDG_CONFIG_HOME=$AID_DIR` — no symlink in `~/.config/` required.
-
-## Pane layout and sizes
-
-All pane geometry is owned in `aid.sh`. Nothing in `tmux.conf` sets sizes.
-`ensure_treemux.sh` enforces the opencode pane width after the sidebar opens.
-
-| Pane | Width | How set |
-|---|---|---|
-| treemux sidebar (left) | 26 cols | `@treemux-tree-width 26` in `tmux.conf` |
-| editor (middle) | remainder | implicit |
-| opencode (right) | 28% of total | `tmux -L aid split-window -h -p 29` + `ensure_treemux.sh` resize |
-
-## Key behaviours
-
-- `aid` (no args): creates `aid@<dirname>` session on the `aid` tmux socket (`tmux -L aid`); opens `NVIM_APPNAME=nvim nvim` in middle, opencode in right, treemux sidebar via `ensure_treemux.sh`.
-- `aid -a <name>`: attaches to an existing named session on the `aid` tmux socket.
-- On fresh launch (no file arg), nvim opens `cheatsheet.md` as a styled read-only welcome buffer. Opening any file auto-dismisses it. `<leader>?` reopens it.
-- netrw is fully disabled (`loaded_netrw = 1`); nvim-tree handles all file browsing.
-- `showtabline = 2` — bufferline tab bar always visible from launch.
-
-## Git-sync coordinator (`nvim/lua/sync.lua`)
-
-Three entry points — see `docs/ARCHITECTURE.md` for full detail:
-
-- `sync.sync()` — full refresh (checktime + gitsigns + nvim-tree + treemux RPC). Call on `FocusGained`, `TermClose`, and post-LazyGit.
-- `sync.checktime()` — lightweight (`silent! checktime` only). Call on `BufEnter`, `CursorHold`, `CursorHoldI`, and from the `pane-focus-in` tmux hook. **Do not** call `sync()` from these — it causes sign-column flicker.
-- `sync.reload()` — full workspace reload (`<leader>R`): tmux config → nvim config → aidignore.reset() → sync().
-
-## Unique features
-
-- **Persistent sidebar**: separate `NVIM_APPNAME=treemux` nvim instance in its own tmux pane — tmux-level isolation means no nvim terminal/split can bleed into it; tracks any `cd` via custom `watch_and_update.sh`.
-- **Git-sync coordinator**: `sync.lua` refreshes all git-aware components after branch switches — gitsigns, nvim-tree, treemux sidebar, buffers.
-- **Cross-project bookmarks**: `~/.local/share/aid/nvim/global_bookmarks` — works across unrelated directories, unlike Harpoon (project-scoped). `<leader>ba/bd/bb`.
-- **Unified statusline**: `vim-tpipeline` exports nvim statusline to the tmux status bar, visible across all panes.
-- **Lazygit worktree fix**: `<leader>gg` uses `git rev-parse --git-dir` (not `--git-common-dir`) to set `GIT_DIR`/`GIT_WORK_TREE` — correct for bare-repo worktrees.
-- **Full environment isolation**: dedicated `tmux -L aid` server + `XDG_CONFIG_HOME=$AID_DIR`. Zero conflict with existing nvim/tmux config.
-
-## Main nvim plugins
-
-| Plugin | Purpose |
-|---|---|
-| `nvim-tree/nvim-tree.lua` | File tree (netrw disabled) |
-| `lewis6991/gitsigns.nvim` | Git hunk signs + `<leader>j/k/hp/hl` |
-| `kdheepak/lazygit.nvim` | Lazygit float (`<leader>gg`) |
-| `nvim-telescope/telescope.nvim` | Fuzzy find (`<leader>f/1/2`) |
-| `akinsho/bufferline.nvim` | Tab bar (always visible, `showtabline=2`) |
-| `echasnovski/mini.statusline` | Statusline content (hidden, piped to tmux) |
-| `vimpostor/vim-tpipeline` | Embed nvim statusline into tmux status bar |
-| `folke/persistence.nvim` | Session save/restore (`<leader>ss/sl/sd`) |
-| `mbbill/undotree` | Undo history tree (`<leader>u`) |
-| `neovim/nvim-lspconfig` + `hrsh7th/nvim-cmp` | LSP + autocompletion (gopls by default) |
-| `nvim-treesitter/nvim-treesitter` | Syntax highlighting |
-| `iamcco/markdown-preview.nvim` | Browser preview (`<leader>mp/ms`) |
-| `folke/which-key.nvim` | Keymap help popup |
-
-## nvim-treemux plugins
-
-| Plugin | Purpose |
-|---|---|
-| `nvim-tree/nvim-tree.lua` | Primary file tree |
-| `kiyoon/nvim-tree-remote.nvim` | Opens files from sidebar into main nvim via Unix socket |
-| `kiyoon/tmux-send.nvim` | Send lines/selections to tmux panes (`-`, `_`) |
-| `stevearc/oil.nvim` | File manager toggle (`<space>o`) |
-| `nvim-neo-tree/neo-tree.nvim` | Alternative tree (`<space>nn`) |
-| `aserowy/tmux.nvim` | tmux/nvim pane navigation + register sync |
-| `folke/tokyonight.nvim` | Colorscheme (tokyonight-night, transparent) |
-
-## Repo structure (bare + worktrees)
-
-```
-aid/              ← bare git root
-├── main/         ← master branch (worktree) — all code
-└── docs/         ← dev-docs branch (orphan worktree) — private docs
-```
-
-`aid/main/.git` and `aid/docs/.git` are files (worktree gitdir pointers), not directories.
-
-The `dev-docs` branch is an orphan — **never merge into master or any code branch**.
-
-For lazygit from inside a worktree: use `git rev-parse --git-dir` (returns `aid/worktrees/main`), not `--git-common-dir` (returns bare root — causes phantom deleted files).
+| `docs/ARCHITECTURE.md` | Environment isolation, boot sequence, pane layout, env vars, sync.lua, aidignore, hot-reload, plugin lists |
+| `docs/ROADMAP.md` | Open tasks (`T-NNN`), Done items, and the bug cross-reference index |
+| `docs/DECISIONS.md` | Architecture Decision Records (ADR-001 … ADR-NNN) |
+| `docs/bugs/BUGS.md` | All bug reports and their status |
