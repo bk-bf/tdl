@@ -5,6 +5,7 @@
 set -euo pipefail
 
 AID_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+AID_IGNORE=""
 XDG_DATA_HOME="$HOME/.local/share/aid"
 XDG_STATE_HOME="$HOME/.local/state/aid"
 XDG_CACHE_HOME="$HOME/.cache/aid"
@@ -130,7 +131,6 @@ dbg "session=$session"
 # Parse .aidignore (walks up from launch_dir) and build AID_IGNORE=comma,separated,list.
 # If no .aidignore is found anywhere, create an empty one in launch_dir so the
 # file watcher in nvim has a file to watch from the start.
-AID_IGNORE=""
 _aidignore_file=""
 _dir="$launch_dir"
 for _i in $(seq 1 20); do
