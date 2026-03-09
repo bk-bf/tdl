@@ -33,6 +33,18 @@
 
 ## Closed
 
+### BUG-022: tmux status bar goes blank when switching away from nvim pane
+
+**Status**: closed — fixed 2026-03-10 — two-part fix
+
+**Repro**: launch `aid`; focus the nvim editor pane; switch to the opencode or treemux pane — the tmux status bar collapses to a plain blue bar with only session name and clock. All mode/file/git/LSP info disappears and the right side is empty.
+
+**Root cause**: `vim-tpipeline` defaults to `g:tpipeline_restore = 0`. With restore disabled, tpipeline sets `status-right` to `#(cat ...vimbridge-R)` on startup and never clears it on `FocusLost`. When nvim is not the active pane, the vimbridge file contains stale/empty content, so the cat returns nothing — right side renders blank. The `palette.conf` fallback string is never restored because tpipeline's restore path is not enabled.
+
+**Fix**:
+1. `gen-tmux-palette.sh` — added `#{pane_current_command}` to `status-right` so the fallback bar shows the active pane name (e.g. `opencode`, `nvim`) when it is restored.
+2. `nvim/init.lua` — set `vim.g.tpipeline_restore = 1` in the tpipeline config block. This enables tpipeline's save/restore path: it saves `status-left`/`status-right` before overriding them on `FocusGained`, and restores them on `FocusLost`. The nvim restart loop (`while true; do nvim ...; done` in `aid.sh`) means the crash case is covered — tpipeline re-saves the palette.conf string on every respawn.
+
 ### BUG-021: LSP/treesitter semantic tokens bleed fg color over bufferline buffer name
 
 **Status**: closed — fixed 2026-03-09 — see [archive/BUG-021.md](archive/BUG-021.md)
