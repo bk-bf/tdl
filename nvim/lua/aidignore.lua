@@ -6,7 +6,7 @@
 -- Usage:
 --   local aidignore = require("aidignore")
 --   local pats = aidignore.patterns()
---   -- pats.raw       — plain (non-glob) strings, safe for nvim-tree filters.custom
+--   -- pats.raw       — anchored vimscript regexes for nvim-tree filters.custom
 --   -- pats.telescope — Lua-pattern strings for Telescope file_ignore_patterns
 --
 --   aidignore.watch()   — start watching the current .aidignore (call after setup)
@@ -29,19 +29,23 @@ end
 -- Build pattern tables from a list of raw .aidignore lines.
 --
 -- nvim-tree passes every ignore_list key through vim.fn.match() as a vimscript
--- regex. Patterns starting with * (e.g. *.pyc, *~) are invalid vimscript and
--- trigger E33 "no previous atom". Only plain names (no wildcards) are safe.
+-- regex against both the relative path and the basename (filters.lua:182).
+-- A bare name like "env" would match "environment.md" as a substring, hiding
+-- legitimate files. We anchor each plain name as a full path-component regex:
+--   \(^\|/\)env\(/\|$\)
+-- This matches only when "env" is a complete directory or file name, not when
+-- it appears as a substring inside another name.
 --
--- pats.raw       — plain names only, safe for vim.fn.match / filters.custom
+-- pats.raw       — anchored vimscript regexes for nvim-tree filters.custom
 -- pats.telescope — Lua patterns for all entries (plain + globs), for Telescope
 local function _build(raw)
   local plain = {}
   local telescope = {}
   for _, p in ipairs(raw) do
     if p ~= "" then
-      -- Only plain names (no * or ?) go to nvim-tree
+      -- Only plain names (no * or ?) go to nvim-tree; anchor as full component.
       if not p:find("[*?]") then
-        table.insert(plain, p)
+        table.insert(plain, [[\(^\|/\)]] .. p .. [[\(/\|$\)]])
       end
       -- All entries go to Telescope as Lua patterns
       local lp = _glob_to_lua(p)

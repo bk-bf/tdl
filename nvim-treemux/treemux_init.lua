@@ -284,12 +284,16 @@ require("lazy").setup({
         filters = {
           -- Initial filters from AID_IGNORE env (set by aid.sh at session start).
           -- aidignore.watch() below takes over for live updates after startup.
+          -- Entries are anchored as full path-component vimscript regexes so that
+          -- a name like "env" does not match "environment.md" as a substring.
           custom = (function()
-            local t = { ".git" }
-            local env = os.getenv("AID_IGNORE") or ""
-            for entry in env:gmatch("[^,]+") do
+            local t = { [[\(^\|/\)\.git\(/\|$\)]] }
+            local env_var = os.getenv("AID_IGNORE") or ""
+            for entry in env_var:gmatch("[^,]+") do
               entry = entry:match("^%s*(.-)%s*$")
-              if entry ~= "" then table.insert(t, entry) end
+              if entry ~= "" and not entry:find("[*?]") then
+                table.insert(t, [[\(^\|/\)]] .. entry .. [[\(/\|$\)]])
+              end
             end
             return t
           end)(),
