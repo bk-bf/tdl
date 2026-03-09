@@ -12,6 +12,7 @@
 #   aid                       launch new session in current directory
 #   aid -a, --attach          attach to a session (interactive list, or -a <name>)
 #   aid -l, --list            list all running sessions
+#   aid -i, --install         (re)run install.sh
 #   aid -d, --debug           verbose output (set -x + step tracing)
 #   aid -h, --help            show this help
 
@@ -63,6 +64,7 @@ Usage:
   aid -a, --attach      interactive session list to attach to
   aid -a <name>         attach directly to named session
   aid -l, --list        list running sessions
+  aid -i, --install     (re)run install.sh
   aid -d, --debug       verbose output (set -x + step tracing)
   aid -h, --help        show this help
 EOF
@@ -71,6 +73,9 @@ EOF
   -l|--list)
     tmux -L aid list-sessions 2>/dev/null || echo "no aid sessions"
     exit
+    ;;
+  -i|--install)
+    exec "$AID_DIR/install.sh"
     ;;
   -a|--attach)
     shift
