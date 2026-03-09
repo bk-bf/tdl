@@ -58,7 +58,6 @@ if not vim.loop.fs_stat(lazypath) then
   vim.fn.system({
     "git",
     "clone",
-    "--filter=blob:none",
     "https://github.com/folke/lazy.nvim.git",
     "--branch=stable", -- latest stable release
     lazypath,
@@ -135,6 +134,36 @@ local function nvim_tree_on_attach(bufnr)
 end
 
 require("lazy").setup({
+  {
+    "folke/tokyonight.nvim",
+    lazy = false,
+    priority = 1000,
+    config = function()
+      vim.o.background = "dark"
+      vim.cmd("colorscheme tokyonight-night")
+      -- Punch out backgrounds so the terminal color shows through.
+      vim.api.nvim_set_hl(0, "Normal",      { bg = "NONE" })
+      vim.api.nvim_set_hl(0, "NormalFloat", { bg = "NONE" })
+      -- NvimTreeNormal is reset by nvim-tree during setup; override after VimEnter.
+      vim.api.nvim_create_autocmd("VimEnter", {
+        once = true,
+        callback = function()
+          vim.api.nvim_set_hl(0, "NvimTreeNormal",      { bg = "NONE" })
+          vim.api.nvim_set_hl(0, "NvimTreeNormalNC",    { bg = "NONE" })
+          vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { bg = "NONE" })
+          -- Load user overrides if present (~/.config/aid/treemux_user.lua).
+          -- This file is not part of the aid repo — users create it themselves
+          -- to customise highlight groups without modifying upstream files.
+          local user_cfg = (os.getenv("HOME") or "") .. "/.config/aid/treemux_user.lua"
+          local f = io.open(user_cfg, "r")
+          if f then
+            f:close()
+            pcall(dofile, user_cfg)
+          end
+        end,
+      })
+    end,
+  },
   {
     "kiyoon/tmux-send.nvim",
     keys = {
@@ -490,26 +519,6 @@ require("lazy").setup({
   },
 })
 
--- ============================================================
--- PALETTE & APPEARANCE
--- ============================================================
--- Load the shared aid palette so treemux uses the same color values as the
--- main editor and the tmux status bar.  AID_DIR/nvim/lua is on package.path
--- (set at the top of this file) so palette.lua is always reachable.
-local _palette_ok, p = pcall(require, "palette")
-if not _palette_ok then
-  -- Fallback table — keeps treemux functional even if AID_DIR is not set
-  p = {
-    purple = "#b57bee", blue = "#6181C6", lavender = "#A284C6",
-    fg = "#ffffff", cursor_fg = "#000000", none = "none",
-    git_add = "#50fa7b", git_del = "#ff5555", git_chg = "#ffaa00",
-  }
-end
-
--- No external colorscheme — aid owns all colors via palette.lua.
--- Apply a clean dark base so nvim-tree icons are readable against any terminal
--- background, then punch out the panel background to terminal-transparent.
-vim.o.background = "dark"
 vim.o.cursorline = true
 
 -- Auto-focus tree root to current directory (hide parents)
@@ -518,19 +527,6 @@ vim.api.nvim_create_autocmd("DirChanged", {
     require("nvim-tree.api").tree.change_root(vim.fn.getcwd())
   end,
 })
-
--- Apply transparency and palette-driven accent highlights (must be last)
-vim.api.nvim_set_hl(0, "Normal",                    { bg = p.none })
-vim.api.nvim_set_hl(0, "NormalFloat",               { bg = p.none })
-vim.api.nvim_set_hl(0, "NvimTreeNormal",            { bg = p.none })
-vim.api.nvim_set_hl(0, "NvimTreeNormalNC",          { bg = p.none })
-vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer",       { bg = p.none })
-vim.api.nvim_set_hl(0, "NvimTreeFolderName",        { fg = p.lavender })
-vim.api.nvim_set_hl(0, "NvimTreeOpenedFolderName",  { fg = p.purple, bold = true })
-vim.api.nvim_set_hl(0, "NvimTreeRootFolder",        { fg = p.blue,   bold = true })
-vim.api.nvim_set_hl(0, "NvimTreeGitNew",            { fg = p.git_add })
-vim.api.nvim_set_hl(0, "NvimTreeGitDeleted",        { fg = p.git_del })
-vim.api.nvim_set_hl(0, "NvimTreeGitDirty",          { fg = p.git_chg })
 
 -- ============================================================
 -- TREEMUX SELF-HEAL

@@ -68,7 +68,7 @@ fi
 ln -sfn "$AID/nvim-treemux" "$AID_CONFIG/treemux"
 echo "  $AID_CONFIG/treemux -> $AID/nvim-treemux"
 
-# ── 5. nvim plugin bootstrap (headless lazy sync) ─────────────────────────────
+# ── 5. nvim plugin bootstrap (headless lazy sync) ────────────────────────────
 _spin() {
   local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 msg="$1"
   while kill -0 "$2" 2>/dev/null; do

@@ -162,13 +162,17 @@ export AID_IGNORE
 dbg "aidignore=$_aidignore_file AID_IGNORE=${AID_IGNORE:-<empty>}"
 
 # Start the aid-isolated tmux server with its own config.
-# AID_DIR is passed via -e so it is in the server environment before tmux.conf
-# is parsed — tmux.conf uses $AID_DIR (source-file) and #{E:AID_DIR} (run) at
-# load time, both of which require AID_DIR to be present from the start.
+# Note: source-file in tmux.conf cannot expand #{E:VAR} format strings in its
+# path argument (tmux limitation) — palette.conf is sourced explicitly below
+# after the server is up, using the real $AID_DIR path.
 dbg "starting tmux session"
 tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "$session" \
-  -e "AID_DIR=$AID_DIR" \
   -x "$(tput cols)" -y "$(tput lines)"
+
+# Apply the palette now that the server is running and we have the real path.
+# Must come before set-environment block so status bar colours are correct
+# immediately on attach.
+tmux -L aid source-file "$AID_DIR/tmux/palette.conf"
 
 # Export AID_DIR, AID_IGNORE, and OPENCODE_CONFIG_DIR into the server environment
 #
@@ -191,6 +195,7 @@ tmux -L aid set-environment -g XDG_DATA_HOME            "$HOME/.local/share/aid"
 tmux -L aid set-environment -g XDG_STATE_HOME           "$HOME/.local/state/aid"
 tmux -L aid set-environment -g XDG_CACHE_HOME           "$HOME/.cache/aid"
 tmux -L aid set-environment -g OPENCODE_CONFIG_DIR      "$AID_DIR/opencode"
+tmux -L aid set-environment -g OPENCODE_TUI_CONFIG      "$AID_DIR/opencode/tui.json"
 tmux -L aid set-environment -g TMUX_PLUGIN_MANAGER_PATH "$AID_DIR/tmux/plugins/"
 # NVIM_APPNAME in the server environment means every pane shell inherits it —
 # no dependency on the send-keys command being delivered intact.
@@ -205,24 +210,21 @@ nvim_socket="/tmp/aid-nvim-${session}.sock"
 tmux -L aid set-environment -t "$session" AID_NVIM_SOCKET "$nvim_socket"
 dbg "nvim_socket=$nvim_socket"
 
+# sidebar.tmux (run via TPM) calls bare `tmux set-option` — which targets the
+# default tmux socket, not -L aid — so @treemux-key-Tab is never written to
+# the aid server.  Set it directly here using the same ARGS format that
+# toggle.sh expects (fields match sidebar.tmux's set_default_key_binding_options).
+# Values are read back from the options that tmux.conf already set.
+_tmx() { tmux -L aid show-option -gqv "$1"; }
+_treemux_args="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,,$(_tmx @treemux-tree-client)"
+_treemux_args_focus="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,focus,$(_tmx @treemux-tree-client)"
+tmux -L aid set-option -gq "@treemux-key-Tab"    "${_treemux_args}"
+tmux -L aid set-option -gq "@treemux-key-Bspace" "${_treemux_args_focus}"
+dbg "treemux-key-Tab=${_treemux_args}"
+
 # IDE layout sizes — all pane geometry owned here, not scattered in tmux.conf
 # sidebar=21 cols set in tmux.conf (must be before sidebar.tmux runs);
 # opencode=29% of total width; editor gets the remainder.
-
-# Wait for sidebar.tmux to finish setting @treemux-key-Tab.
-# Poll instead of a fixed sleep so we proceed as soon as the plugin is ready
-# (fast on local, still correct on slow machines / high-latency SSH).
-# Timeout after 10 s to avoid hanging forever if treemux fails to initialise.
-dbg "waiting for treemux init (@treemux-key-Tab)"
-_treemux_deadline=$(( SECONDS + 10 ))
-until tmux -L aid show-option -gqv @treemux-key-Tab 2>/dev/null | grep -q .; do
-  if (( SECONDS >= _treemux_deadline )); then
-    echo "aid: warning: treemux did not set @treemux-key-Tab within 10 s, continuing anyway" >&2
-    break
-  fi
-  sleep 0.1
-done
-dbg "treemux ready (elapsed ~$(( SECONDS - (_treemux_deadline - 10) )) s)"
 
 # Find the initial (only) pane and capture its stable ID before any splits.
 editor_pane_id=$(tmux -L aid list-panes -t "$session" -F "#{pane_id}" | head -1)
@@ -232,7 +234,7 @@ dbg "editor_pane_id=$editor_pane_id"
 # (no shell prompt — avoids zsh intercept, send-keys mangling, autocorrect).
 dbg "splitting opencode pane"
 tmux -L aid split-window -h -p 29 -t "$editor_pane_id" \
-  "OPENCODE_CONFIG_DIR=$(printf '%q' "$AID_DIR/opencode") opencode $(printf '%q' "$launch_dir")"
+  "XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") OPENCODE_CONFIG_DIR=$(printf '%q' "$AID_DIR/opencode") OPENCODE_TUI_CONFIG=$(printf '%q' "$AID_DIR/opencode/tui.json") opencode $(printf '%q' "$launch_dir")"
 opencode_pane_id=$(tmux -L aid list-panes -t "$session" -F "#{pane_id} #{pane_left}" \
   | sort -k2 -n | tail -1 | cut -d' ' -f1)
 dbg "opencode_pane_id=$opencode_pane_id"

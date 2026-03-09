@@ -623,7 +623,7 @@ require("lazy").setup({
   -- Markdown browser preview (<leader>mp to open, <leader>ms to stop)
   {
     "iamcco/markdown-preview.nvim",
-    build = "cd app && npm install",
+    build = "cd app && npm install && git restore .",
     ft = { "markdown" },
     keys = {
       { "<leader>mp", function()
