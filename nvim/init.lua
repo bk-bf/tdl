@@ -409,8 +409,12 @@ require("lazy").setup({
     dependencies = { "nvim-tree/nvim-web-devicons" },
     opts = {
       options = {
-        separator_style = "thin",
-        diagnostics     = "nvim_lsp",
+        separator_style      = "thin",
+        diagnostics          = "nvim_lsp",
+        -- Keep the bar visible even when only one buffer is open.  Without this
+        -- bufferline fights showtabline = 2 and can blank the bar on single-buffer
+        -- sessions (e.g. right after a cold start or after closing all but one tab).
+        always_show_bufferline = true,
       },
       highlights = {
         fill                      = { bg = p.tab_bg },
@@ -460,6 +464,16 @@ require("lazy").setup({
       -- without requiring a keypress (Tab) to trigger the first render.
       -- defer_fn gives the UI time to fully initialise before redrawing.
       vim.defer_fn(function() vim.cmd("redrawtabline") end, 50)
+      -- BUG-018: when files are opened from the treemux sidebar, nvim receives
+      -- a raw `:tabnew <file>` command via msgpack-RPC.  BufAdd/TabNew fire but
+      -- nvim does not re-enter its normal redraw cycle promptly after an RPC
+      -- dispatch, so bufferline's rendered tabline goes stale.  Forcing a
+      -- redrawtabline on every BufAdd/TabNew ensures the bar is always up to date
+      -- regardless of how a buffer was created (UI keypress or RPC).
+      vim.api.nvim_create_autocmd({ "BufAdd", "TabNew" }, {
+        desc     = "BUG-018: force bufferline redraw after RPC-triggered buffer/tab open",
+        callback = function() vim.cmd("redrawtabline") end,
+      })
     end,
   },
 
@@ -731,8 +745,10 @@ function _G.apply_palette()
   vim.api.nvim_set_hl(0, "GitSignsAdd",      { fg = p.git_add })
   vim.api.nvim_set_hl(0, "GitSignsDelete",   { fg = p.git_del })
   vim.api.nvim_set_hl(0, "GitSignsDeleteLn", { bg = p.git_del_ln })
-  vim.api.nvim_set_hl(0, "GitSignsChange",   { fg = p.git_chg })
-  vim.api.nvim_set_hl(0, "GitSignsChangeLn", { bg = p.git_chg_ln })
+  vim.api.nvim_set_hl(0, "GitSignsChange",       { fg = p.git_chg })
+  vim.api.nvim_set_hl(0, "GitSignsChangeLn",     { bg = p.git_chg_ln })
+  vim.api.nvim_set_hl(0, "NvimTreeGitDirtyIcon", { fg = p.git_dot })
+  vim.api.nvim_set_hl(0, "NvimTreeGitStagedIcon",{ fg = p.git_dot })
   vim.api.nvim_set_hl(0, "Cursor", { fg = p.cursor_fg, bg = p.purple })
   vim.api.nvim_set_hl(0, "MiniStatuslineDevinfo",        { fg = p.fg, bg = p.blue })
   vim.api.nvim_set_hl(0, "MiniStatuslineFilename",       { fg = p.fg, bg = p.lavender })

@@ -153,6 +153,15 @@ require("lazy").setup({
           vim.api.nvim_set_hl(0, "NvimTreeNormal",      { bg = "NONE" })
           vim.api.nvim_set_hl(0, "NvimTreeNormalNC",    { bg = "NONE" })
           vim.api.nvim_set_hl(0, "NvimTreeEndOfBuffer", { bg = "NONE" })
+          -- Git status dot icons: use aid accent purple so they stand out
+          -- consistently with the main editor pane (wired via palette.git_dot).
+          if aid_dir ~= "" then
+            local ok, pal = pcall(dofile, aid_dir .. "/nvim/lua/palette.lua")
+            if ok and type(pal) == "table" and pal.git_dot then
+              vim.api.nvim_set_hl(0, "NvimTreeGitDirtyIcon",  { fg = pal.git_dot })
+              vim.api.nvim_set_hl(0, "NvimTreeGitStagedIcon", { fg = pal.git_dot })
+            end
+          end
           -- Load user overrides if present (~/.config/aid/treemux_user.lua).
           -- This file is not part of the aid repo — users create it themselves
           -- to customise highlight groups without modifying upstream files.
