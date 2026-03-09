@@ -1,6 +1,10 @@
 -- .nvim.lua — per-project formatter and linter config (loaded automatically by nvim)
 -- Install tools via :Mason, then uncomment the lines for your stack.
 -- LSP servers need no config here — installing them in :Mason is enough.
+--
+-- opencode.json is also bootstrapped alongside this file.
+-- It is intentionally minimal — edit it to configure opencode's LSP client if needed.
+-- Docs: https://opencode.ai/docs/lsp/
 
 -- require("conform").setup({ formatters_by_ft = {
 --   lua        = { "stylua" },
