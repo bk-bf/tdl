@@ -435,8 +435,10 @@ require("lazy").setup({
         separator                 = { fg = p.tab_bg, bg = p.tab_bg },
         separator_selected        = { fg = p.tab_sel, bg = p.tab_sel },
         separator_visible         = { fg = p.tab_bg, bg = p.tab_bg },
-        buffer_selected           = { fg = p.tab_fg, bg = p.tab_sel, bold = true },
-        buffer_visible            = { fg = p.tab_fg, bg = p.tab_bg },
+        -- nocombine: prevents LSP/treesitter semantic tokens from bleeding their
+        -- fg color over the buffer name text in the tab bar (BUG-021).
+        buffer_selected           = { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true },
+        buffer_visible            = { fg = p.tab_fg, bg = p.tab_bg, nocombine = true },
         close_button              = { fg = p.tab_fg, bg = p.tab_bg },
         close_button_selected     = { fg = p.tab_fg, bg = p.tab_sel },
         close_button_visible      = { fg = p.tab_fg, bg = p.tab_bg },
@@ -923,8 +925,10 @@ function _G.apply_palette()
   hl(0, "BufferLineSeparator",                 { fg = p.tab_bg, bg = p.tab_bg })
   hl(0, "BufferLineSeparatorSelected",         { fg = p.tab_sel, bg = p.tab_sel })
   hl(0, "BufferLineSeparatorVisible",          { fg = p.tab_bg, bg = p.tab_bg })
-  hl(0, "BufferLineBufferSelected",            { fg = p.tab_fg, bg = p.tab_sel, bold = true })
-  hl(0, "BufferLineBufferVisible",             { fg = p.tab_fg, bg = p.tab_bg })
+  -- nocombine: prevents LSP/treesitter semantic tokens from bleeding their
+  -- fg color over the buffer name text in the tab bar (BUG-021).
+  hl(0, "BufferLineBufferSelected",            { fg = p.tab_fg, bg = p.tab_sel, bold = true, nocombine = true })
+  hl(0, "BufferLineBufferVisible",             { fg = p.tab_fg, bg = p.tab_bg, nocombine = true })
   hl(0, "BufferLineCloseButton",               { fg = p.tab_fg, bg = p.tab_bg })
   hl(0, "BufferLineCloseButtonSelected",       { fg = p.tab_fg, bg = p.tab_sel })
   hl(0, "BufferLineCloseButtonVisible",        { fg = p.tab_fg, bg = p.tab_bg })
