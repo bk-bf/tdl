@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # gen-tmux-palette.sh — writes $AID_DIR/tmux/palette.conf from the aid palette.
-#
-# Called by aid.sh at session start so the tmux status bar gets palette-driven
-# colors.  nvim/lua/palette.lua is the single source of truth — no values are
-# duplicated here.  Lua is used to load the module and emit shell assignments.
+# See docs/ARCHITECTURE.md for details.
 
 set -euo pipefail
 

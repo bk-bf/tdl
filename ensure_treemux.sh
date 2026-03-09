@@ -1,15 +1,6 @@
 #!/usr/bin/env bash
 # ensure_treemux.sh — open treemux sidebar if not already open; never closes it.
-# Called from nvim VimEnter and the session-created hook.
-#
-# Layout enforcement
-# ──────────────────
-# The three-pane layout (sidebar | editor | opencode) cannot be fully
-# specified upfront because treemux adds the sidebar *after* the initial
-# editor/opencode split in aliases.sh.  Once the sidebar exists we know
-# the exact window width and can resize the opencode pane to the correct
-# absolute column count, ensuring it always occupies OPENCODE_PCT % of the
-# total window regardless of terminal size.
+# See docs/ARCHITECTURE.md for layout-enforcement details.
 
 TREEMUX_SCRIPTS="${AID_DIR:-$(cd "$(dirname "$(realpath "$0")")" && pwd)}/tmux/plugins/treemux/scripts"
 

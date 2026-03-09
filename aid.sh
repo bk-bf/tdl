@@ -1,29 +1,9 @@
 #!/usr/bin/env bash
-# aid.sh — main entry point. Symlinked into ~/.local/bin/aid by install.sh.
-#
-# Isolation: aid runs on its own tmux server socket (-L aid) with its own
-# config (-f), and sets all four XDG dirs so nvim is fully isolated:
-#   XDG_CONFIG_HOME=$AID_DIR     → config  at $AID_DIR/nvim/  (source lives here)
-#   XDG_DATA_HOME=~/.local/share/aid  → plugin data  at ~/.local/share/aid/nvim/
-#   XDG_STATE_HOME=~/.local/state/aid → shada/swap   at ~/.local/state/aid/nvim/
-#   XDG_CACHE_HOME=~/.cache/aid       → cache        at ~/.cache/aid/nvim/
-# Nothing is written to ~/.config/nvim, ~/.local/share/nvim, ~/.local/state/nvim,
-# or ~/.cache/nvim.
-# NVIM_APPNAME=nvim (main editor) resolves to $AID_DIR/nvim.
-# NVIM_APPNAME=treemux (sidebar) resolves to ~/.config/aid/treemux (symlink managed by install.sh).
-# The user's ~/.config/nvim and existing tmux sessions are never touched.
-#
-# Usage:
-#   aid                       launch new session in current directory
-#   aid -a, --attach          attach to a session (interactive list, or -a <name>)
-#   aid -i, --install         (re)run install.sh — install/update plugins and symlinks
-#   aid -l, --list            list all running sessions
-#   aid -d, --debug           verbose output (set -x + step tracing)
-#   aid -h, --help            show this help
+# aid.sh — main entry point. Symlinked to ~/.local/bin/aid by install.sh.
+# See docs/ARCHITECTURE.md for the full isolation and boot-sequence docs.
 
 set -euo pipefail
 
-# Always resolves correctly because this file is executed, not sourced.
 AID_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
 # ── Debug mode ───────────────────────────────────────────────────────────────
@@ -179,21 +159,10 @@ tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "$session" \
 # immediately on attach.
 tmux -L aid source-file "$AID_DIR/tmux/palette.conf"
 
-# Export AID_DIR, AID_IGNORE, and OPENCODE_CONFIG_DIR into the server environment
-#
-# XDG isolation — only the vars that every pane legitimately needs:
-#   XDG_DATA_HOME, XDG_STATE_HOME, XDG_CACHE_HOME direct runtime artefacts to
-#   ~/.local/{share,state}/aid and ~/.cache/aid — away from the source tree and
-#   away from the user's ~/.local/share/nvim etc.
-#
-# XDG_CONFIG_HOME is intentionally NOT set globally. It is only needed by the
-# nvim process and is injected inline in the respawn-pane command below. Setting
-# it globally would cause every pane shell — and any app opened from them — to
-# treat $AID_DIR as their config home, writing Firefox profiles, lazygit configs,
-# etc. directly into the source tree.
-#
-# OPENCODE_CONFIG_DIR isolates opencode to aid's own config dir (commands/,
-# package.json) instead of ~/.config/opencode/.
+# Export key vars into the tmux server so every pane inherits them.
+# XDG_CONFIG_HOME is intentionally absent — setting it globally would make
+# every pane shell treat $AID_DIR as its config home (see ARCHITECTURE.md).
+# It is injected inline only on the nvim respawn-pane command below.
 tmux -L aid set-environment -g AID_DIR                  "$AID_DIR"
 tmux -L aid set-environment -g AID_IGNORE               "$AID_IGNORE"
 tmux -L aid set-environment -g XDG_DATA_HOME            "$HOME/.local/share/aid"
@@ -202,24 +171,15 @@ tmux -L aid set-environment -g XDG_CACHE_HOME           "$HOME/.cache/aid"
 tmux -L aid set-environment -g OPENCODE_CONFIG_DIR      "$AID_DIR/opencode"
 tmux -L aid set-environment -g OPENCODE_TUI_CONFIG      "$AID_DIR/opencode/tui.json"
 tmux -L aid set-environment -g TMUX_PLUGIN_MANAGER_PATH "$AID_DIR/tmux/plugins/"
-# NVIM_APPNAME in the server environment means every pane shell inherits it —
-# no dependency on the send-keys command being delivered intact.
+# NVIM_APPNAME in the server environment means every pane shell inherits it.
 tmux -L aid set-environment -g NVIM_APPNAME "nvim"
-# AID_NVIM_SOCKET must be set before ensure_treemux.sh runs so the sidebar nvim
-# inherits it at startup and sets g:nvim_tree_remote_socket_path correctly.
-# Socket path inherits the aid@<name> session name — @ is legal in UNIX socket paths
-# and in /tmp filenames. If a tool ever chokes on it, the socket path is the first place to check.
-# Set session-local (not global) so multiple concurrent aid sessions each target their own nvim.
-# #{E:AID_NVIM_SOCKET} in tmux.conf hooks reads the pane's inherited env → session env → correct.
+# AID_NVIM_SOCKET: session-local so concurrent sessions each target their own nvim.
 nvim_socket="/tmp/aid-nvim-${session}.sock"
 tmux -L aid set-environment -t "$session" AID_NVIM_SOCKET "$nvim_socket"
 dbg "nvim_socket=$nvim_socket"
 
-# sidebar.tmux (run via TPM) calls bare `tmux set-option` — which targets the
-# default tmux socket, not -L aid — so @treemux-key-Tab is never written to
-# the aid server.  Set it directly here using the same ARGS format that
-# toggle.sh expects (fields match sidebar.tmux's set_default_key_binding_options).
-# Values are read back from the options that tmux.conf already set.
+# sidebar.tmux (run via TPM) targets the default tmux socket, not -L aid, so
+# @treemux-key-Tab is never written to the aid server. Set it directly here.
 _tmx() { tmux -L aid show-option -gqv "$1"; }
 _treemux_args="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,,$(_tmx @treemux-tree-client)"
 _treemux_args_focus="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,focus,$(_tmx @treemux-tree-client)"

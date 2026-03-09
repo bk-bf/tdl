@@ -1,23 +1,10 @@
 #!/usr/bin/env bash
-# install.sh — set up aid on a fresh machine
-# Run once after cloning: bash install.sh
-#
-# Isolation guarantee
-# ───────────────────
-# aid never touches ~/.config/nvim or ~/.config/tmux/.tmux.conf.
-# Main editor config is resolved directly at launch time:
-#   XDG_CONFIG_HOME=$AID_DIR, NVIM_APPNAME=nvim → $AID_DIR/nvim (no symlink)
-# Sidebar uses a symlink for its config (nvim-treemux lives outside $AID_DIR):
-#   ~/.config/aid/treemux → aid/nvim-treemux/ (sidebar, NVIM_APPNAME=treemux)
-# tmux plugins land in $AID_DIR/tmux/plugins/ (never ~/.config/tmux/plugins/).
-# tmux runs on a dedicated server socket (tmux -L aid) with -f pointing directly
-# at aid/tmux.conf, so the user's existing tmux setup is never loaded or modified.
-# TPM and all tmux plugins are installed under $AID/tmux/plugins/ — not in
-# ~/.config/tmux/plugins/.
+# install.sh — set up aid on a fresh machine. Run once after cloning.
+# See docs/ARCHITECTURE.md for the full isolation and symlink docs.
+
 set -euo pipefail
 
 AID="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# All aid config lives under a single XDG root so the user has one place to look.
 AID_CONFIG="$HOME/.config/aid"
 
 echo "==> aid install starting from $AID"
