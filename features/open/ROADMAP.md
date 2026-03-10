@@ -15,6 +15,7 @@
 ## Phase 3 — Publicize
 
 - [ ] **T-010**: Terminal theme sync hook — optional integration point for syncing aid's palette with the host terminal emulator theme
+- [ ] **T-030**: **Desktop notifications from opencode** — fire a `notify-send` (Linux) / `osascript` (macOS) notification when opencode finishes a task or requires user input. Opencode has no native hook for this; implementation options: (a) a wrapper script that tails the opencode pane output for idle/prompt patterns and fires on match, (b) a tmux `pane-focus-out` + output monitoring approach, or (c) an opencode custom command that sends the notification as its last step. The "requires input" case is harder — needs reliable detection of opencode's input-waiting state (e.g. prompt cursor visible, no tool calls in flight).
 
 ## Phase 4 — Fleet (multi-agent parallel development)
 
