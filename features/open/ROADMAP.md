@@ -3,8 +3,8 @@
 
 ## Phase 1 — Harden (fix before any promotion)
 
-- [o] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
-- [o] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
+- [>] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
+- [>] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
 - [x] **T-012**: Consider `main` + feature-branches workflow (currently single `master`)
 
 ## Phase 2 — Differentiate (architectural upgrades)
