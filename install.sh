@@ -2,20 +2,28 @@
 # install.sh — set up aid on a fresh machine. Run once after cloning.
 # Always invoked via boot.sh (directly or via `aid -i`), which ensures it runs
 # from the correct install location (~/.local/share/aid by default).
+# For worktree installs, AID_DATA and AID_CONFIG are passed in as env vars by
+# aid.sh before re-execing into the worktree — artifacts land in
+# ~/.local/share/aid/<worktree> and config in ~/.config/aid/<worktree>.
 # See docs/ARCHITECTURE.md for the full isolation and symlink docs.
 
 set -euo pipefail
 
 AID="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
-AID_CONFIG="$HOME/.config/aid"
-TPM_DIR="$AID/tmux/plugins/tpm"
-TREEMUX_DIR="$AID/tmux/plugins/treemux"
-_XDG_DATA="$HOME/.local/share/aid"
+# AID_DATA — runtime artifact root (tmux plugins, palette.conf, nvim data).
+# AID_CONFIG — personal config root (treemux symlink, lazygit config).
+# Both default to the production paths; worktree launches override via env.
+AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
+AID_CONFIG="${AID_CONFIG:-$HOME/.config/aid}"
+
+TPM_DIR="$AID_DATA/tmux/plugins/tpm"
+TREEMUX_DIR="$AID_DATA/tmux/plugins/treemux"
+_XDG_DATA="$AID_DATA"
 _XDG_STATE="$HOME/.local/state/aid"
 _XDG_CACHE="$HOME/.cache/aid"
 
-echo "==> aid install: $AID"
+echo "==> aid install: source=$AID  data=$AID_DATA  config=$AID_CONFIG"
 
 # ── 1. Dependencies ──────────────────────────────────────────────────────────
 # Arch/CachyOS: pynvim is required by the treemux watch script
@@ -33,7 +41,7 @@ fi
 # ── 2. TPM ───────────────────────────────────────────────────────────────────
 if [[ ! -d "$TPM_DIR" ]]; then
   echo "==> Installing TPM..."
-  mkdir -p "$AID/tmux/plugins"
+  mkdir -p "$AID_DATA/tmux/plugins"
   git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
 else
   echo "==> TPM already present"
@@ -104,12 +112,15 @@ _spin "syncing nvim plugins…" $_nvim_pid
 wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on first run)"
 
 # ── 6. Shell integration — symlink aid into PATH ─────────────────────────────
-echo "==> Wiring shell integration..."
-
-mkdir -p "$HOME/.local/bin"
-ln -sf "$AID/aid.sh" "$HOME/.local/bin/aid"
-echo "==> Symlinked: ~/.local/bin/aid -> $AID/aid.sh"
-echo "==> Ensure ~/.local/bin is on your PATH (it is by default on most distros)."
+# Only wire the PATH symlink for the production install (AID_DATA == default).
+# Worktree bootstraps (AID_DATA=~/.local/share/aid/<name>) don't touch PATH.
+if [[ "$AID_DATA" == "$HOME/.local/share/aid" ]]; then
+  echo "==> Wiring shell integration..."
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$AID/aid.sh" "$HOME/.local/bin/aid"
+  echo "==> Symlinked: ~/.local/bin/aid -> $AID/aid.sh"
+  echo "==> Ensure ~/.local/bin is on your PATH (it is by default on most distros)."
+fi
 
 echo ""
 echo "==> aid install complete. Run 'aid' in any directory to launch the IDE."

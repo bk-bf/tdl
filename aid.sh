@@ -8,15 +8,19 @@ AID_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 # Bare repo root is one level above the worktree (main/ → aid/).
 AID_REPO="$(dirname "$AID_DIR")"
 AID_IGNORE=""
-XDG_DATA_HOME="$HOME/.local/share/aid"
+# AID_DATA — runtime artifact root (tmux plugins, palette.conf, nvim plugin data).
+# Always under ~/.local/share/aid[/<worktree>]; never the source worktree dir.
+# For end users AID_DIR === AID_DATA (boot.sh installs source into ~/.local/share/aid).
+# For worktree sessions AID_DATA is set before re-exec and inherited here.
+AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
+AID_CONFIG="${AID_CONFIG:-$HOME/.config/aid}"
+XDG_DATA_HOME="$AID_DATA"
 XDG_STATE_HOME="$HOME/.local/state/aid"
 XDG_CACHE_HOME="$HOME/.cache/aid"
 OPENCODE_CONFIG_DIR="$AID_DIR/opencode"
 OPENCODE_TUI_CONFIG="$AID_DIR/opencode/tui.json"
-LG_CONFIG_FILE="$HOME/.config/aid/lazygit/config.yml"
-# tmux/plugins/ lives inside AID_DIR (not XDG_DATA_HOME) — the repo is self-contained.
-# See docs/DECISIONS.md § ADR-014 if you want to reconsider moving plugins to XDG_DATA_HOME.
-TMUX_PLUGIN_MANAGER_PATH="$AID_DIR/tmux/plugins/"
+LG_CONFIG_FILE="$AID_CONFIG/lazygit/config.yml"
+TMUX_PLUGIN_MANAGER_PATH="$AID_DATA/tmux/plugins/"
 
 # ── Debug mode + worktree pre-pass ───────────────────────────────────────────
 # Consume -d/--debug and -w/--worktree before the main case so they compose
@@ -58,10 +62,13 @@ fi
 if [[ -n "$AID_WORKTREE" ]]; then
   if [[ "$AID_WORKTREE" == /* ]]; then
     _wt_dir="$AID_WORKTREE"
+    _wt_name="$(basename "$AID_WORKTREE")"
   elif [[ -d "$AID_REPO/$AID_WORKTREE" ]]; then
     _wt_dir="$AID_REPO/$AID_WORKTREE"
+    _wt_name="$AID_WORKTREE"
   elif [[ -d "$AID_REPO/feature/$AID_WORKTREE" ]]; then
     _wt_dir="$AID_REPO/feature/$AID_WORKTREE"
+    _wt_name="$AID_WORKTREE"
   else
     echo "aid: worktree '${AID_WORKTREE}' not found" >&2
     echo "      looked in: ${AID_REPO}/${AID_WORKTREE}" >&2
@@ -72,6 +79,15 @@ if [[ -n "$AID_WORKTREE" ]]; then
   if [[ ! -x "$_wt_aid" ]]; then
     echo "aid: no executable aid.sh found in worktree '${_wt_dir}'" >&2
     exit 1
+  fi
+  # Isolated runtime dirs — artifacts land in ~/.local/share/aid/<name>
+  # and personal config in ~/.config/aid/<name>, never in the source worktree.
+  export AID_DATA="$HOME/.local/share/aid/${_wt_name}"
+  export AID_CONFIG="$HOME/.config/aid/${_wt_name}"
+  # Auto-bootstrap the worktree's runtime dir on first use.
+  if [[ ! -d "$AID_DATA/tmux/plugins/tpm" ]]; then
+    echo "aid: first run for worktree '${_wt_name}' — bootstrapping ${AID_DATA} ..."
+    AID_DATA="$AID_DATA" AID_CONFIG="$AID_CONFIG" bash "$_wt_dir/install.sh"
   fi
   # Re-build the arg list: restore --debug if it was set, then append remaining args.
   _fwd=()
@@ -237,7 +253,7 @@ tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "$session" \
 # Apply the palette now that the server is running and we have the real path.
 # Must come before set-environment block so status bar colours are correct
 # immediately on attach.
-tmux -L aid source-file "$AID_DIR/tmux/palette.conf"
+tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
 
 # Set status-left/right to the vimbridge cat strings session-locally.
 # palette.conf uses set -g (global) so sourcing it again later (prefix+r) won't
@@ -261,6 +277,8 @@ printf ' ' > "${_tmux_socket}-${_session_id}-vimbridge-R"
 # every pane shell treat $AID_DIR as its config home (see ARCHITECTURE.md).
 # It is injected inline only on the nvim respawn-pane command below.
 tmux -L aid set-environment -g AID_DIR                  "$AID_DIR"
+tmux -L aid set-environment -g AID_DATA                 "$AID_DATA"
+tmux -L aid set-environment -g AID_CONFIG               "$AID_CONFIG"
 tmux -L aid set-environment -g AID_IGNORE               "$AID_IGNORE"
 tmux -L aid set-environment -g XDG_DATA_HOME            "$XDG_DATA_HOME"
 tmux -L aid set-environment -g XDG_STATE_HOME           "$XDG_STATE_HOME"

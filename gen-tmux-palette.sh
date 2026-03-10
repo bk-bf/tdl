@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# gen-tmux-palette.sh — writes $AID_DIR/tmux/palette.conf from the aid palette.
+# gen-tmux-palette.sh — writes $AID_DATA/tmux/palette.conf from the aid palette.
 # See docs/ARCHITECTURE.md for details.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# AID_DIR — source root (where nvim/lua/palette.lua lives).
+# AID_DATA — runtime artifact root (where palette.conf is written).
 AID_DIR="${AID_DIR:-$SCRIPT_DIR}"
-OUT="$AID_DIR/tmux/palette.conf"
+AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
+OUT="$AID_DATA/tmux/palette.conf"
 PALETTE="$AID_DIR/nvim/lua/palette.lua"
 
 # ── Load palette into shell variables via Lua ────────────────────────────────

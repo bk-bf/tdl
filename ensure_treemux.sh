@@ -2,7 +2,7 @@
 # ensure_treemux.sh — open treemux sidebar if not already open; never closes it.
 # See docs/ARCHITECTURE.md for layout-enforcement details.
 
-TREEMUX_SCRIPTS="${AID_DIR:-$(cd "$(dirname "$(realpath "$0")")" && pwd)}/tmux/plugins/treemux/scripts"
+TREEMUX_SCRIPTS="${TMUX_PLUGIN_MANAGER_PATH:-${AID_DATA:-$HOME/.local/share/aid}/tmux/plugins/}treemux/scripts"
 
 # Target: opencode occupies this percentage of the total window width.
 # At 154 cols, 28% -> 43 cols.
