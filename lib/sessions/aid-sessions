@@ -25,8 +25,8 @@ set -euo pipefail
 : "${AID_DIR:?}"
 : "${AID_DATA:?}"
 
-# shellcheck source=aid-meta
-source "$AID_DIR/aid-meta"
+# shellcheck source=lib/sessions/aid-meta
+source "$AID_DIR/lib/sessions/aid-meta"
 
 # ── Collapse state ────────────────────────────────────────────────────────────
 # Tmpfile listing collapsed project names, one per line.
@@ -56,10 +56,10 @@ if ! command -v fzf &>/dev/null; then
 fi
 
 # Pre-build the action and reload command strings (expanded once, safe paths).
-_act="AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") $(printf '%q' "$AID_DIR/aid-sessions-action")"
-_lst="AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") $(printf '%q' "$AID_DIR/aid-sessions-list")"
+_act="AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions-action")"
+_lst="AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions-list")"
 
-_initial_list=$("$AID_DIR/aid-sessions-list" 2>/dev/null || true)
+_initial_list=$("$AID_DIR/lib/sessions/aid-sessions-list" 2>/dev/null || true)
 
 if [[ -z "$_initial_list" ]]; then
   echo "no orchestrator sessions — run: aid --mode orchestrator"
@@ -85,7 +85,7 @@ _selected=$(printf '%s\n' "$_initial_list" | fzf \
   --bind "z:execute-silent($_act toggle-collapse {})+reload($_lst 2>/dev/null)" \
   --bind "r:execute($_act rename {})+reload($_lst 2>/dev/null)" \
   --bind "d:execute($_act delete {})+reload($_lst 2>/dev/null)" \
-  --bind "n:become(AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR/orchestrator.sh") --new)" \
+  --bind "n:become(AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR/lib/orchestrator.sh") --new)" \
   --bind "q:abort" \
   --bind "esc:abort" \
   2>/dev/null \
@@ -107,7 +107,7 @@ case "${_selected:-}" in
     else
       printf '%s\n' "$_project" >> "$AID_SESSIONS_COLLAPSE"
     fi
-    exec "$AID_DIR/aid-sessions"
+    exec "$AID_DIR/lib/sessions/aid-sessions"
     ;;
   __dead__*)
     _real_session="${_selected#__dead__}"
@@ -115,7 +115,7 @@ case "${_selected:-}" in
     _project=$(printf '%s' "$_real_session" | cut -d'@' -f2 | cut -d'/' -f1)
     _slug=$(printf '%s' "$_real_session"    | cut -d'/' -f2)
     if [[ -d "${_repo:-}" ]]; then
-      exec "$AID_DIR/orchestrator.sh" --resurrect "$_project" "$_slug" "$_repo"
+      exec "$AID_DIR/lib/orchestrator.sh" --resurrect "$_project" "$_slug" "$_repo"
     else
       echo "aid-sessions: repo path '${_repo}' no longer exists for session $_real_session" >&2
       exit 1

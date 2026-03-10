@@ -14,9 +14,10 @@ set -euo pipefail
 : "${AID_DIR:?}"
 : "${AID_DATA:?}"
 : "${AID_CONFIG:?}"
+export AID_DIR AID_DATA AID_CONFIG
 
-# shellcheck source=aid-meta
-source "$AID_DIR/aid-meta"
+# shellcheck source=lib/sessions/aid-meta
+source "$AID_DIR/lib/sessions/aid-meta"
 
 dbg() { [[ "${AID_DEBUG:-0}" -eq 1 ]] && echo "[orc:debug] $*" >&2 || true; }
 
@@ -28,7 +29,7 @@ dbg() { [[ "${AID_DEBUG:-0}" -eq 1 ]] && echo "[orc:debug] $*" >&2 || true; }
 _ensure_server() {
   if ! tmux -L aid list-sessions &>/dev/null; then
     dbg "starting aid tmux server"
-    "$AID_DIR/gen-tmux-palette.sh"
+    "$AID_DIR/lib/gen-tmux-palette.sh"
     tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "aid@dashboard" \
       -x "$(tput cols)" -y "$(tput lines)"
     tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
@@ -122,7 +123,7 @@ spawn_orc_session() {
   tmux -L aid select-pane -t "$orc_pane_id"
 
   # Open treemux sidebar on the left.
-  tmux -L aid run-shell -t "$orc_pane_id" "$AID_DIR/ensure_treemux.sh"
+    tmux -L aid run-shell -t "$orc_pane_id" "$AID_DIR/lib/ensure_treemux.sh"
 
   # Respawn the opencode pane into opencode directly (no shell, same pattern as aid.sh).
   dbg "respawning opencode pane"
@@ -145,7 +146,7 @@ spawn_orc_session() {
 
   # Hook: update last_active timestamp whenever any pane in this session is focused.
   tmux -L aid set-hook -t "$session" pane-focus-in \
-    "run-shell \"AID_DATA=$(printf '%q' "$AID_DATA") $(printf '%q' "$AID_DIR/aid-meta-touch") aid@${project}/${slug}\""
+    "run-shell \"AID_DATA=$(printf '%q' "$AID_DATA") $(printf '%q' "$AID_DIR/lib/sessions/aid-meta-touch") aid@${project}/${slug}\""
 
   dbg "session $session ready"
   _attach_or_switch "$session"
@@ -240,15 +241,10 @@ else
   if [[ -n "${TMUX:-}" ]]; then
     # Already inside tmux: open the navigator as a popup overlay.
     tmux -L aid display-popup -E -w 70% -h 60% \
-      "AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR")/aid-sessions"
+      "AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR")/lib/sessions/aid-sessions"
   else
-    # Outside tmux: attach to the most recently active aid@* session.
-    _last=$(tmux -L aid list-sessions -F "#{session_last_attached} #{session_name}" 2>/dev/null \
-      | grep -E ' aid@[^/]+/[^/]+$' | sort -rn | head -1 | awk '{print $2}')
-    if [[ -n "$_last" ]]; then
-      _attach_or_switch "$_last"
-    else
-      _prompt_new_session
-    fi
+    # Outside tmux: run the session navigator interactively in the terminal so
+    # the user can pick a session or create a new one — same UX as the popup.
+    "$AID_DIR/lib/sessions/aid-sessions"
   fi
 fi

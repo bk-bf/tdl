@@ -14,8 +14,8 @@ set -euo pipefail
 : "${AID_DATA:?}"
 : "${AID_DIR:?}"
 
-# shellcheck source=aid-meta
-source "$AID_DIR/aid-meta"
+# shellcheck source=lib/sessions/aid-meta
+source "$AID_DIR/lib/sessions/aid-meta"
 
 _action="$1"
 _line="${2:-}"

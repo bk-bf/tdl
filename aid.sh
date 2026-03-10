@@ -253,7 +253,7 @@ if [[ -n "$AID_MODE" ]]; then
   case "$AID_MODE" in
     orchestrator)
       export AID_DIR AID_DATA AID_CONFIG AID_DEBUG
-      exec "$AID_DIR/orchestrator.sh"
+      exec "$AID_DIR/lib/orchestrator.sh"
       ;;
     *)
       echo "aid: unknown mode '$AID_MODE'  (known: orchestrator)" >&2
@@ -266,7 +266,7 @@ fi
 
 # Regenerate tmux/palette.conf from nvim/lua/palette.lua before the server starts.
 # This keeps the tmux status bar in sync with the Lua palette without duplicating hex values.
-"$AID_DIR/gen-tmux-palette.sh"
+"$AID_DIR/lib/gen-tmux-palette.sh"
 
 # Capture launch dir before tmux changes context
 launch_dir="$PWD"
@@ -416,7 +416,7 @@ fi
 # and $TMUX_PANE set, which toggle.sh's bare tmux calls require.
 # Pane IDs are stable — treemux inserting the sidebar won't shift them.
 dbg "running ensure_treemux.sh"
-tmux -L aid run-shell -t "$editor_pane_id" "$AID_DIR/ensure_treemux.sh"
+tmux -L aid run-shell -t "$editor_pane_id" "$AID_DIR/lib/ensure_treemux.sh"
 
 # Respawn the editor pane directly into the nvim restart loop — bypasses the
 # interactive shell entirely so zsh autocorrect / send-keys mangling can't fire.
