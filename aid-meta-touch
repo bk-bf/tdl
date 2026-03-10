@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# aid-meta-touch — update last_active for a session in sessions.json.
+#
+# Usage: aid-meta-touch <tmux_session>
+# Called by the pane-focus-in tmux hook set in orchestrator.sh.
+# Requires AID_DATA to be set in the environment.
+
+set -euo pipefail
+
+: "${AID_DATA:?}"
+
+tmux_session="${1:?usage: aid-meta-touch <tmux_session>}"
+metadata_file="$AID_DATA/sessions.json"
+
+command -v jq &>/dev/null || exit 0
+[[ -f "$metadata_file" ]] || exit 0
+
+now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+jq --arg s "$tmux_session" --arg t "$now" \
+  'map(if .tmux_session==$s then .last_active=$t else . end)' \
+  "$metadata_file" > "${metadata_file}.tmp" && mv "${metadata_file}.tmp" "$metadata_file"

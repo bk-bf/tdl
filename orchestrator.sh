@@ -2,7 +2,7 @@
 # orchestrator.sh — aid --mode orchestrator bootstrap.
 #
 # Starts the T3/Codex-style multi-session layout on the aid tmux server:
-#   - Each opencode context lives in its own tmux session named aid/<project>/<slug>
+#   - Each opencode context lives in its own tmux session named aid@<project>/<slug>
 #   - The session navigator (aid-sessions) is available as a global prefix+s popup
 #   - The first invocation creates the dashboard session and prompts for a first context
 #
@@ -15,6 +15,9 @@ set -euo pipefail
 : "${AID_DATA:?}"
 : "${AID_CONFIG:?}"
 
+# shellcheck source=aid-meta
+source "$AID_DIR/aid-meta"
+
 dbg() { [[ "${AID_DEBUG:-0}" -eq 1 ]] && echo "[orc:debug] $*" >&2 || true; }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -26,7 +29,7 @@ _ensure_server() {
   if ! tmux -L aid list-sessions &>/dev/null; then
     dbg "starting aid tmux server"
     "$AID_DIR/gen-tmux-palette.sh"
-    tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "aid/dashboard" \
+    tmux -L aid -f "$AID_DIR/tmux.conf" new-session -d -s "aid@dashboard" \
       -x "$(tput cols)" -y "$(tput lines)"
     tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
     # Inject shared env vars into the server so every spawned session inherits them.
@@ -53,7 +56,7 @@ _ensure_server() {
 }
 
 # spawn_orc_session <project> <slug> <repo_path>
-# Creates a new aid/<project>/<slug> tmux session with the orchestrator 3-pane layout:
+# Creates a new aid@<project>/<slug> tmux session with the orchestrator 3-pane layout:
 #   left: ~25% opencode  (NOTE: in the orchestrator the "left" visible pane after
 #         treemux sidebar opens is opencode — same treemux+opencode architecture
 #         as the standard layout but opencode is the focus pane, not nvim)
@@ -67,7 +70,7 @@ _ensure_server() {
 # between sessions without leaving the terminal.
 spawn_orc_session() {
   local project="$1" slug="$2" repo_path="$3"
-  local session="aid/${project}/${slug}"
+  local session="aid@${project}/${slug}"
 
   if tmux -L aid has-session -t "$session" 2>/dev/null; then
     echo "aid: session '$session' already exists — attaching" >&2
@@ -140,45 +143,20 @@ spawn_orc_session() {
   # Write metadata for the session navigator.
   _write_session_metadata "$project" "$slug" "$repo_path"
 
+  # Hook: update last_active timestamp whenever any pane in this session is focused.
+  tmux -L aid set-hook -t "$session" pane-focus-in \
+    "run-shell \"AID_DATA=$(printf '%q' "$AID_DATA") $(printf '%q' "$AID_DIR/aid-meta-touch") aid@${project}/${slug}\""
+
   dbg "session $session ready"
   _attach_or_switch "$session"
 }
 
 # _write_session_metadata <project> <slug> <repo_path>
-# Appends or updates ~/.local/share/aid/sessions.json with this session's metadata.
-# Uses a simple jq-based upsert; degrades gracefully if jq is absent.
+# Delegates to _meta_write from aid-meta (sourced at top of file).
 _write_session_metadata() {
   local project="$1" slug="$2" repo_path="$3"
-  local metadata_file="$AID_DATA/sessions.json"
-  local tmux_session="aid/${project}/${slug}"
-  local branch
-  branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-  local now
-  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")
-
-  if ! command -v jq &>/dev/null; then
-    dbg "jq not found — skipping session metadata write"
-    return
-  fi
-
-  # Ensure the file exists with a valid JSON array.
-  [[ -f "$metadata_file" ]] || echo "[]" > "$metadata_file"
-
-  local entry
-  entry=$(jq -n \
-    --arg session "$tmux_session" \
-    --arg repo    "$repo_path" \
-    --arg branch  "$branch" \
-    --arg created "$now" \
-    --arg active  "$now" \
-    '{"tmux_session":$session,"repo_path":$repo,"branch":$branch,"created_at":$created,"last_active":$active}')
-
-  # Upsert: remove existing entry for this session, append new one.
-  jq --argjson entry "$entry" \
-    'map(select(.tmux_session != $entry.tmux_session)) + [$entry]' \
-    "$metadata_file" > "${metadata_file}.tmp" && mv "${metadata_file}.tmp" "$metadata_file"
-
-  dbg "metadata written to $metadata_file"
+  _meta_write "$project" "$slug" "$repo_path"
+  dbg "metadata written via _meta_write for aid@${project}/${slug}"
 }
 
 # _attach_or_switch <session>
@@ -191,7 +169,7 @@ _attach_or_switch() {
 }
 
 # ── Prompt for first session ──────────────────────────────────────────────────
-# If there are no existing aid/* sessions (other than aid/dashboard), prompt the
+# If there are no existing aid@<project>/<slug> sessions (other than aid@dashboard), prompt the
 # user to create the first one, defaulting to the current directory.
 
 _prompt_new_session() {
@@ -241,9 +219,16 @@ if [[ "${1:-}" == "--new" ]]; then
   exit 0
 fi
 
-# Count existing aid/<project>/<slug> sessions (exclude aid/dashboard).
+# --resurrect <project> <slug> <repo_path>: re-spawn a dead session from metadata.
+# Called by aid-sessions when the user selects a dead session entry.
+if [[ "${1:-}" == "--resurrect" ]]; then
+  spawn_orc_session "${2:?}" "${3:?}" "${4:?}"
+  exit 0
+fi
+
+# Count existing aid@<project>/<slug> sessions (exclude aid@dashboard).
 _existing=$(tmux -L aid list-sessions -F "#{session_name}" 2>/dev/null \
-  | grep -cE '^aid/[^/]+/[^/]+$' || true)
+  | grep -cE '^aid@[^/]+/[^/]+$' || true)
 
 if [[ "$_existing" -eq 0 ]]; then
   # First run — prompt for a session and spawn it.
@@ -257,9 +242,9 @@ else
     tmux -L aid display-popup -E -w 70% -h 60% \
       "AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR")/aid-sessions"
   else
-    # Outside tmux: attach to the most recently active aid/* session.
+    # Outside tmux: attach to the most recently active aid@* session.
     _last=$(tmux -L aid list-sessions -F "#{session_last_attached} #{session_name}" 2>/dev/null \
-      | grep -E ' aid/[^/]+/[^/]+$' | sort -rn | head -1 | awk '{print $2}')
+      | grep -E ' aid@[^/]+/[^/]+$' | sort -rn | head -1 | awk '{print $2}')
     if [[ -n "$_last" ]]; then
       _attach_or_switch "$_last"
     else

@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# aid-meta — session metadata helpers for orchestrator mode.
+#
+# Sourced by orchestrator.sh and aid-sessions; never executed directly.
+# Requires: AID_DATA set in environment. jq is optional — all functions
+# degrade gracefully when jq is absent (writes are skipped, reads return "").
+
+# _meta_file — path to the sessions metadata store.
+_meta_file() { printf '%s/sessions.json' "$AID_DATA"; }
+
+# _meta_ensure — create an empty store if it doesn't exist.
+_meta_ensure() {
+  local f; f=$(_meta_file)
+  [[ -f "$f" ]] || printf '[]' > "$f"
+}
+
+# _meta_write <project> <slug> <repo_path>
+# Upsert a session entry. Preserves created_at from existing entry if present.
+_meta_write() {
+  local project="$1" slug="$2" repo_path="$3"
+  command -v jq &>/dev/null || return 0
+  _meta_ensure
+  local f; f=$(_meta_file)
+  local tmux_session="aid@${project}/${slug}"
+  local branch now existing_created
+  branch=$(git -C "$repo_path" rev-parse --abbrev-ref HEAD 2>/dev/null \
+    | grep -v '^HEAD$' || true)
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  # Preserve original created_at if the session already has an entry.
+  existing_created=$(jq -r \
+    --arg s "$tmux_session" \
+    'map(select(.tmux_session==$s)) | first | .created_at // ""' \
+    "$f" 2>/dev/null || true)
+  [[ -z "$existing_created" ]] && existing_created="$now"
+  local entry
+  entry=$(jq -n \
+    --arg session "$tmux_session" \
+    --arg repo    "$repo_path" \
+    --arg branch  "$branch" \
+    --arg created "$existing_created" \
+    --arg active  "$now" \
+    '{"tmux_session":$session,"repo_path":$repo,"branch":$branch,"created_at":$created,"last_active":$active}')
+  jq --argjson e "$entry" \
+    'map(select(.tmux_session != $e.tmux_session)) + [$e]' \
+    "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+}
+
+# _meta_touch <tmux_session>
+# Update last_active timestamp for an existing entry. No-op if entry absent.
+_meta_touch() {
+  local tmux_session="$1"
+  command -v jq &>/dev/null || return 0
+  local f; f=$(_meta_file)
+  [[ -f "$f" ]] || return 0
+  local now; now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  jq --arg s "$tmux_session" --arg t "$now" \
+    'map(if .tmux_session==$s then .last_active=$t else . end)' \
+    "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+}
+
+# _meta_remove <tmux_session>
+# Remove an entry by session name.
+_meta_remove() {
+  local tmux_session="$1"
+  command -v jq &>/dev/null || return 0
+  local f; f=$(_meta_file)
+  [[ -f "$f" ]] || return 0
+  jq --arg s "$tmux_session" 'map(select(.tmux_session != $s))' \
+    "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+}
+
+# _meta_get <tmux_session> <field>
+# Print one field value for a session, or "" if not found / jq absent.
+_meta_get() {
+  local tmux_session="$1" field="$2"
+  command -v jq &>/dev/null || { printf ''; return 0; }
+  local f; f=$(_meta_file)
+  [[ -f "$f" ]] || { printf ''; return 0; }
+  jq -r --arg s "$tmux_session" --arg k "$field" \
+    'map(select(.tmux_session==$s)) | first | .[$k] // ""' \
+    "$f" 2>/dev/null || true
+}
+
+# _meta_all_sessions
+# Print all tmux_session values from the store, one per line.
+_meta_all_sessions() {
+  command -v jq &>/dev/null || return 0
+  local f; f=$(_meta_file)
+  [[ -f "$f" ]] || return 0
+  jq -r '.[].tmux_session' "$f" 2>/dev/null || true
+}
