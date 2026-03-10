@@ -25,20 +25,30 @@ OPENCODE_TUI_CONFIG="$AID_DIR/opencode/tui.json"
 AID_DEBUG=0
 AID_NO_AI=0
 AID_BRANCH=""
+AID_MODE=""
 _args=()
 _skip_next=0
+_skip_next_for=""
 for _arg in "$@"; do
   if [[ "$_skip_next" -eq 1 ]]; then
-    # Next token after --branch: could be another flag (starts with -) or a
-    # positional arg that is actually the branch value.  If it looks like a
-    # flag, treat --branch as bare (interactive) and re-process this token.
+    # Next token after --branch or --mode: could be another flag (starts with -)
+    # or a positional arg that is the value.  If it looks like a flag, treat
+    # the preceding option as bare/interactive and re-process this token.
     if [[ "$_arg" == -* ]]; then
-      AID_BRANCH="__interactive__"
+      if [[ "$_skip_next_for" == "branch" ]]; then
+        AID_BRANCH="__interactive__"
+      fi
       _skip_next=0
+      _skip_next_for=""
       # Fall through to re-process _arg in the case below.
     else
-      AID_BRANCH="$_arg"
+      if [[ "$_skip_next_for" == "branch" ]]; then
+        AID_BRANCH="$_arg"
+      elif [[ "$_skip_next_for" == "mode" ]]; then
+        AID_MODE="$_arg"
+      fi
       _skip_next=0
+      _skip_next_for=""
       continue
     fi
   fi
@@ -49,16 +59,22 @@ for _arg in "$@"; do
       AID_NO_AI=1 ;;
     --branch)
       # value expected as next arg
-      _skip_next=1 ;;
+      _skip_next=1
+      _skip_next_for="branch" ;;
     --branch=*)
       AID_BRANCH="${_arg#*=}"
       [[ -z "$AID_BRANCH" ]] && AID_BRANCH="__interactive__" ;;
+    --mode)
+      _skip_next=1
+      _skip_next_for="mode" ;;
+    --mode=*)
+      AID_MODE="${_arg#*=}" ;;
     *)
       _args+=("$_arg") ;;
   esac
 done
 # --branch at end of args with nothing following → interactive
-if [[ "$_skip_next" -eq 1 ]]; then
+if [[ "$_skip_next" -eq 1 && "$_skip_next_for" == "branch" ]]; then
   AID_BRANCH="__interactive__"
 fi
 set -- "${_args[@]+"${_args[@]}"}"
@@ -170,6 +186,7 @@ aid — AI-assisted dev environment
 Usage:
   aid                        launch new session in current directory
   aid --no-ai                launch without the opencode pane (editor + sidebar only)
+  aid --mode orchestrator    launch orchestrator mode (T3/Codex-style multi-session layout)
   aid -a, --attach           interactive session list to attach to
   aid -a <name>              attach directly to named session
   aid -i, --install          (re)run install.sh — install/update plugins and symlinks
@@ -226,6 +243,22 @@ EOF
     exit 1
     ;;
 esac
+
+# ── Mode dispatch ─────────────────────────────────────────────────────────────
+# --mode flags are consumed by the pre-pass and dispatched here, after branch
+# re-exec, so that --branch --mode orchestrator works correctly.
+if [[ -n "$AID_MODE" ]]; then
+  case "$AID_MODE" in
+    orchestrator)
+      export AID_DEBUG
+      exec "$AID_DIR/orchestrator.sh"
+      ;;
+    *)
+      echo "aid: unknown mode '$AID_MODE'  (known: orchestrator)" >&2
+      exit 1
+      ;;
+  esac
+fi
 
 # No flag — fall through to create a new session in current directory.
 
