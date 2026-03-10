@@ -21,13 +21,16 @@
 
 Orchestrator mode is the tmux-native solo orchestration layout for `aid` that replicates the T3/Codex parallel workflow in the terminal. A human operator runs multiple live opencode sessions simultaneously — one per task or project context — and switches between them with full spatial continuity. All sessions stay alive in the background; the operator moves focus, not the agents.
 
-Three-pane layout: session navigator (left, `~25%`) + active opencode (center, `~50%`) + lazygit diff review (right, `~25%`) + nvim tab (`prefix+n`). Each opencode session maps 1:1 to a tmux session named `aid/<project>/<session>`. The session navigator surfaces as a global `prefix+s` popup overlay, grouping sessions by project in a folder-like tree.
+Three-pane layout: session navigator (left, `~25%`) + active opencode (center, `~50%`) + lazygit diff review (right, `~25%`) + nvim tab (`prefix+n`). Each opencode session maps 1:1 to a tmux session named `aid@<project>/<session>`. The session navigator surfaces as a global `prefix+s` popup overlay, grouping sessions by project in a folder-like tree.
 
-- [ ] **T-ORC-1**: `aid --mode orchestrator` bootstrap — create `aid/dashboard` tmux session, spawn initial 3-pane layout (opencode center, lazygit right, nvim tab), register global `prefix+s` popup binding
-- [ ] **T-ORC-2**: Session navigator (`aid-sessions`) — shell script + fzf that reads all `aid/*/*` tmux sessions, groups by project slug, renders tree with status indicators (running/idle + last activity), calls `tmux switch-client` on selection
-- [ ] **T-ORC-3**: New session flow — `n` in navigator prompts for project + session name (defaults: repo basename + branch), creates `aid/<project>/<session>` tmux session with full 3-pane layout
-- [ ] **T-ORC-4**: Session metadata persistence — maintain `~/.local/share/aid/sessions.json` with repo path, branch, created/last-active timestamps; enables navigator to show branch names and enables session resurrection after tmux server restart
+- [x] **T-ORC-1**: `aid --mode orchestrator` bootstrap — create `aid/dashboard` tmux session, spawn initial 3-pane layout (opencode center, lazygit right, nvim tab), register global `prefix+s` popup binding
+- [x] **T-ORC-2**: Session navigator (`aid-sessions`) — shell script + fzf that reads all `aid/*/*` tmux sessions, groups by project slug, renders tree with status indicators (running/idle + last activity), calls `tmux switch-client` on selection
+- [x] **T-ORC-3**: New session flow — `n` in navigator prompts for project + session name (defaults: repo basename + branch), creates `aid/<project>/<session>` tmux session with full 3-pane layout
+- [x] **T-ORC-4**: Session metadata persistence — maintain `~/.local/share/aid/sessions.json` with repo path, branch, created/last-active timestamps; enables navigator to show branch names and enables session resurrection after tmux server restart
 - [ ] **T-ORC-5**: Navigator TUI upgrade — replace fzf stage with dedicated curses/Go TUI supporting collapse/expand project groups, `d` delete, `r` rename, live status polling
+- [ ] **T-ORC-6**: nvim window polish — open treemux sidebar in the nvim window on spawn so both windows have the sidebar
+- [ ] **T-ORC-7**: Status bar context tracking — tmux status bar reflects the active window: show opencode-style vimbridge output when the orchestrator window is focused, switch to standard nvim vimbridge output when the nvim window is focused; driven by a `window-focus` or `pane-focus-in` hook that reads `AID_ORC_ACTIVE_WIN` and selects the appropriate vimbridge source
+- [ ] **ADR-ORC-1**: Non-repo launch behaviour — currently `aid --mode orchestrator` accepts any directory as repo path, but lazygit silently shows nothing if the path is not a git repo (bare repos, non-repo dirs). Options under consideration: (a) validate at prompt time and reject non-repos with a clear error, (b) accept any directory and start lazygit in a degraded/no-repo mode with a warning, (c) auto-detect the nearest git root (walk up from the given path) and offer it as the corrected default, (d) allow non-repo sessions but skip the lazygit pane entirely and replace it with a file tree or empty placeholder. Trade-off: strictness vs flexibility for users who want opencode in a non-repo workspace.
 
 ## Deferred / under consideration
 
