@@ -115,6 +115,14 @@ local function nvim_tree_on_attach(bufnr)
 
   api.config.mappings.default_on_attach(bufnr)
 
+  -- Toggle all hidden-file filters (dotfiles, git-ignored, and custom regexes
+  -- such as the .git directory entry) in a single keypress.
+  vim.keymap.set("n", "H", function()
+    api.tree.toggle_hidden_filter()
+    api.tree.toggle_gitignore_filter()
+    api.tree.toggle_custom_filter()
+  end, opts("Toggle hidden files"))
+
   vim.keymap.set("n", "u", api.tree.change_root_to_node, opts("Dir up"))
   vim.keymap.set("n", "<F1>", api.node.show_info_popup, opts("Show info popup"))
   vim.keymap.set("n", "l", tabnew_follow_symlinks, opts("Open in treemux"))
