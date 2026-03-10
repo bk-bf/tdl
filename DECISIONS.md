@@ -122,14 +122,14 @@ The alternative — nvim-tree inside main nvim — was implemented and reverted.
 **Decision**: aid must not conflict with the user's existing nvim or tmux setup. All runtime state is isolated:
 
 - **tmux server**: dedicated socket `tmux -L aid -f <AID_DIR>/tmux.conf` — `-f` suppresses all user tmux configs; `~/.config/tmux/` is never touched
-- **tmux plugins**: TPM and all plugins installed under `$AID_DIR/tmux/plugins/` — not `~/.config/tmux/plugins/`
+- **tmux plugins**: TPM and all plugins installed under `$AID_DATA/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/` for end users) — not `~/.config/tmux/plugins/` and not inside the source repo (see ADR-014)
 - **nvim (XDG dirs)**: `XDG_CONFIG_HOME=$AID_DIR` — config source lives in the repo (`$AID_DIR/nvim/`). `XDG_DATA_HOME=~/.local/share/aid`, `XDG_STATE_HOME=~/.local/state/aid`, `XDG_CACHE_HOME=~/.cache/aid` — runtime artefacts land in the standard XDG hierarchy under an aid-specific namespace. With `NVIM_APPNAME=nvim`, nvim appends the appname, yielding `~/.local/share/aid/nvim/`, etc. `~/.config/nvim`, `~/.local/share/nvim`, `~/.local/state/nvim`, and `~/.cache/nvim` are never touched.
 - **sidebar nvim**: `XDG_CONFIG_HOME=~/.config/aid` (config is a symlink there — required because treemux resolves via that path); `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` as above, so sidebar data/state/cache land under `~/.local/share/aid/treemux/`, etc.
 - **opencode**: `OPENCODE_CONFIG_DIR=$AID_DIR/opencode` — config reads from inside the repo, not `~/.config/opencode/`
 - **install.sh**: does not inject into any user config file; only writes `~/.config/aid/treemux` (symlink) and `~/.local/bin/aid` (symlink)
 - **All scripts** (`ensure_treemux.sh`, `sync.lua`): use `tmux -L aid` for every tmux command
 
-**Extension rationale (2026-03-09)**: The original decision only set `XDG_CONFIG_HOME`, leaving `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` unset. This caused nvim to write plugin data, state (shada/swap/undo), and cache into `~/.local/share/nvim/`, `~/.local/state/nvim/`, and `~/.cache/nvim/` — violating the isolation guarantee. A second attempt set all four dirs to `$AID_DIR`, which moved the artefacts inside the source tree instead. The correct fix is `XDG_CONFIG_HOME=$AID_DIR` (config source) and the remaining three dirs pointing to `~/.local/share/aid`, `~/.local/state/aid`, `~/.cache/aid` — standard XDG locations under an aid-specific namespace. TPM and the treemux plugin were also relocated from `~/.config/tmux/plugins/` to `$AID_DIR/tmux/plugins/`.
+**Extension rationale (2026-03-09)**: The original decision only set `XDG_CONFIG_HOME`, leaving `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME` unset. This caused nvim to write plugin data, state (shada/swap/undo), and cache into `~/.local/share/nvim/`, `~/.local/state/nvim/`, and `~/.cache/nvim/` — violating the isolation guarantee. A second attempt set all four dirs to `$AID_DIR`, which moved the artefacts inside the source tree instead. The correct fix is `XDG_CONFIG_HOME=$AID_DIR` (config source) and the remaining three dirs pointing to `~/.local/share/aid`, `~/.local/state/aid`, `~/.cache/aid` — standard XDG locations under an aid-specific namespace. TPM and the treemux plugin were also relocated from `~/.config/tmux/plugins/` to `$AID_DIR/tmux/plugins/` (later moved to `$AID_DATA/tmux/plugins/` — see ADR-014).
 
 **Supersedes**: ADR-003, ADR-004 (see `archive/DECISIONS-2026-03-09.md`).
 
@@ -232,16 +232,16 @@ Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (side
 
 ---
 
-### ADR-014: `tmux/plugins/` lives inside `AID_DIR`, not `XDG_DATA_HOME`
+### ADR-014: `tmux/plugins/` moved to `AID_DATA`, not `AID_DIR`
 
-**Date**: 2026-03-09
-**Status**: Made — current behaviour; low-priority candidate for revisiting
+**Date**: 2026-03-10
+**Status**: Made — supersedes original ADR-014 (2026-03-09)
 
-**Decision**: TPM and all tmux plugins are cloned into `$AID_DIR/tmux/plugins/` (inside the repo) rather than `$XDG_DATA_HOME/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/`).
+**Decision**: TPM and all tmux plugins are cloned into `$AID_DATA/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/` for end users; `~/.local/share/aid/<name>/tmux/plugins/` for worktree sessions) rather than `$AID_DIR/tmux/plugins/` (inside the source worktree).
 
-**Reason**: The whole `aid/` directory is designed to be self-contained — one `git clone` gives a fully working tree. Keeping plugins inside the repo means a single directory holds everything: config, scripts, and runtime plugins. Moving plugins to `XDG_DATA_HOME` would require updating `tmux.conf`'s `@plugin` paths, `TMUX_PLUGIN_MANAGER_PATH`, and `install.sh`'s clone targets — non-trivial churn for a cosmetic gain.
+**Reason**: The introduction of `AID_DATA` / `AID_CONFIG` isolation (for `aid -w <name>` worktree sessions) made the original placement untenable — two worktree sessions cannot share the same `$AID_DIR/tmux/plugins/` directory, and writing runtime-installed data into the source tree is wrong regardless. Moving plugins to `AID_DATA` achieves clean source/data separation: the repo holds only source files and config; runtime-installed data (TPM, treemux, etc.) lives in the XDG data hierarchy outside the repo. `tmux.conf` references plugins via `#{E:TMUX_PLUGIN_MANAGER_PATH}` and `#{E:AID_DATA}` (lazy tmux expansion) rather than hardcoded `AID_DIR` paths.
 
-**Under consideration**: Moving plugins to `~/.local/share/aid/tmux/plugins/` would give a cleaner source/data separation (the repo would contain only source files; runtime-installed data would live outside it). Worth doing if the repo is ever made read-only or installed system-wide.
+**For end users**: `AID_DATA` defaults to `~/.local/share/aid`, which is also where `boot.sh` clones the source. Plugins land at `~/.local/share/aid/tmux/plugins/` — same physical path as before, so there is no user-visible change.
 
 ---
 
@@ -250,6 +250,10 @@ Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (side
 ADRs in this section were previously made but overridden by a later decision. Kept for historical record.
 
 ---
+
+### ADR-014 (original, 2026-03-09): `tmux/plugins/` inside `AID_DIR`
+
+Superseded by ADR-014 (2026-03-10) above. Original decision kept plugins inside the repo (`$AID_DIR/tmux/plugins/`) to keep the worktree self-contained. This became untenable once `AID_DATA` isolation was introduced for `aid -w <name>` worktree sessions.
 
 ### ADR-003, ADR-004: Earlier isolation model
 

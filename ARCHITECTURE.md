@@ -37,10 +37,12 @@ boot.sh (curl | bash)
 ### Session routing
 
 ```
-aid -l / --list   → list sessions (tmux list-sessions) and exit
-aid -a            → interactive list; auto-attach if only one session
-aid -a <name>     → attach to named session directly and exit
+aid -l / --list    → list sessions (tmux list-sessions) and exit
+aid -a             → interactive list; auto-attach if only one session
+aid -a <name>      → attach to named session directly and exit
 aid -i / --install → (re)run install.sh — install/update plugins and symlinks
+aid --update       → git pull + re-run install.sh (alias for -i)
+aid --no-ai        → create session without the opencode pane (T-009)
 aid               → create a new session in $PWD
 ```
 
@@ -71,9 +73,10 @@ aid.sh
   │       tmux socket, not -L aid — so aid.sh sets the options itself)
   ├── capture editor_pane_id (list-panes -F "#{pane_id}" | head -1)
   ├── split-window -h -p 29 → spawned directly into opencode process
+  │       (skipped when --no-ai is set — editor + sidebar only)
   │       (no shell prompt — bypasses zsh autocorrect, no send-keys mangling)
   │       capture opencode_pane_id
-  ├── select-pane editor_pane_id
+  ├── select-pane editor_pane_id  (skipped when --no-ai)
   ├── run-shell ensure_treemux.sh -t editor_pane_id  (opens sidebar)
   ├── respawn-pane -k editor_pane_id → nvim restart loop
    │       cd <launch_dir>; while true; do

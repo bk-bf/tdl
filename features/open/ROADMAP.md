@@ -3,8 +3,8 @@
 
 ## Phase 1 — Harden (fix before any promotion)
 
-- [ ] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
-- [ ] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
+- [o] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
+- [o] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
 - [x] **T-012**: Consider `main` + feature-branches workflow (currently single `master`)
 
 ## Phase 2 — Differentiate (architectural upgrades)
@@ -14,7 +14,8 @@
 
 ## Phase 3 — Publicize
 
-- [ ] **T-009**: Opencode pane opt-in via flag (`aid --no-ai` skips opencode pane) — removes "requires opencode" adoption barrier
+- [>] **T-009**: Opencode pane opt-in via flag (`aid --no-ai` skips opencode pane) — removes "requires opencode" adoption barrier
+- [x] **T-013**: `aid -w / --worktree <name>` — re-exec into a feature worktree's `aid.sh` without merging into main; lookup order: `<repo>/<name>` → `<repo>/feature/<name>` → absolute path; `--debug` forwarded correctly
 - [ ] **T-010**: Terminal theme sync hook — optional integration point for syncing aid's palette with the host terminal emulator theme
 
 ## Phase 4 — Fleet (multi-agent parallel development)
