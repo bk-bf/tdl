@@ -8,8 +8,12 @@ TREEMUX_SCRIPTS="${TMUX_PLUGIN_MANAGER_PATH:-${AID_DATA:-$HOME/.local/share/aid}
 # At 154 cols, 28% -> 43 cols.
 OPENCODE_PCT=28
 
-# ARGS string is stored by sidebar.tmux under @treemux-key-Tab
-ARGS=$(tmux -L aid show-option -gqv '@treemux-key-Tab')
+# ARGS string is stored by sidebar.tmux under @treemux-key-Tab.
+# Use display-message -p '#{E:@treemux-key-Tab}' so that nested #{E:...}
+# format strings inside the option value (e.g. #{E:AID_CONFIG}) are expanded
+# by tmux before the shell sees them. show-option -gqv returns the raw,
+# unexpanded value, which breaks the nvim launch command and init-file path.
+ARGS=$(tmux -L aid display-message -p '#{E:@treemux-key-Tab}')
 PANE_ID="${TMUX_PANE:-$(tmux -L aid display-message -p '#{pane_id}')}"
 
 if [ -z "$ARGS" ]; then
@@ -17,7 +21,7 @@ if [ -z "$ARGS" ]; then
     # Retry for up to 3 seconds before giving up.
     for _i in 1 2 3 4 5 6; do
         sleep 0.5
-        ARGS=$(tmux -L aid show-option -gqv '@treemux-key-Tab')
+        ARGS=$(tmux -L aid display-message -p '#{E:@treemux-key-Tab}')
         [ -n "$ARGS" ] && break
     done
     if [ -z "$ARGS" ]; then
