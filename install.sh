@@ -2,9 +2,9 @@
 # install.sh — set up aid on a fresh machine. Run once after cloning.
 # Always invoked via boot.sh (directly or via `aid -i`), which ensures it runs
 # from the correct install location (~/.local/share/aid by default).
-# For worktree installs, AID_DATA and AID_CONFIG are passed in as env vars by
-# aid.sh before re-execing into the worktree — artifacts land in
-# ~/.local/share/aid/<worktree> and config in ~/.config/aid/<worktree>.
+# For branch installs (aid --branch <name>), AID_DATA and AID_CONFIG are passed
+# in as env vars by aid.sh — artifacts land in ~/.local/share/aid/<branch> and
+# config in ~/.config/aid/<branch>.
 # See docs/ARCHITECTURE.md for the full isolation and symlink docs.
 
 set -euo pipefail
@@ -13,7 +13,7 @@ AID="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
 
 # AID_DATA — runtime artifact root (tmux plugins, palette.conf, nvim data).
 # AID_CONFIG — personal config root (treemux symlink, lazygit config).
-# Both default to the production paths; worktree launches override via env.
+# Both default to the production paths; branch launches override via env.
 AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
 AID_CONFIG="${AID_CONFIG:-$HOME/.config/aid}"
 
@@ -113,7 +113,7 @@ wait $_nvim_pid || echo "  (headless sync exited non-zero — likely fine on fir
 
 # ── 6. Shell integration — symlink aid into PATH ─────────────────────────────
 # Only wire the PATH symlink for the production install (AID_DATA == default).
-# Worktree bootstraps (AID_DATA=~/.local/share/aid/<name>) don't touch PATH.
+# Branch bootstraps (AID_DATA=~/.local/share/aid/<branch>) don't touch PATH.
 if [[ "$AID_DATA" == "$HOME/.local/share/aid" ]]; then
   echo "==> Wiring shell integration..."
   mkdir -p "$HOME/.local/bin"

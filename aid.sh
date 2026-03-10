@@ -5,13 +5,11 @@
 set -euo pipefail
 
 AID_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
-# Bare repo root is one level above the worktree (main/ → aid/).
-AID_REPO="$(dirname "$AID_DIR")"
 AID_IGNORE=""
 # AID_DATA — runtime artifact root (tmux plugins, palette.conf, nvim plugin data).
-# Always under ~/.local/share/aid[/<worktree>]; never the source worktree dir.
+# Always under ~/.local/share/aid[/<branch>]; never the source dir.
 # For end users AID_DIR === AID_DATA (boot.sh installs source into ~/.local/share/aid).
-# For worktree sessions AID_DATA is set before re-exec and inherited here.
+# For branch sessions AID_DATA is set before re-exec and inherited here.
 AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
 AID_CONFIG="${AID_CONFIG:-$HOME/.config/aid}"
 XDG_STATE_HOME="$HOME/.local/state/aid"
@@ -19,78 +17,133 @@ XDG_CACHE_HOME="$HOME/.cache/aid"
 OPENCODE_CONFIG_DIR="$AID_DIR/opencode"
 OPENCODE_TUI_CONFIG="$AID_DIR/opencode/tui.json"
 
-# ── Debug mode + worktree pre-pass ───────────────────────────────────────────
-# Consume -d/--debug and -w/--worktree before the main case so they compose
-# with other flags.  e.g. `aid --debug -w T-009` works correctly.
+# ── Debug mode + branch pre-pass ─────────────────────────────────────────────
+# Consume -d/--debug and --branch before the main case so they compose
+# with other flags.  e.g. `aid --debug --branch T-009` works correctly.
+# AID_BRANCH="" means flag absent; AID_BRANCH="__interactive__" means --branch
+# with no value (show interactive remote branch picker).
 AID_DEBUG=0
-AID_WORKTREE=""
+AID_BRANCH=""
+_branch_flag=0   # 1 once --branch is seen
 _args=()
 _skip_next=0
 for _arg in "$@"; do
   if [[ "$_skip_next" -eq 1 ]]; then
-    AID_WORKTREE="$_arg"
-    _skip_next=0
-    continue
+    # Next token after --branch: could be another flag (starts with -) or a
+    # positional arg that is actually the branch value.  If it looks like a
+    # flag, treat --branch as bare (interactive) and re-process this token.
+    if [[ "$_arg" == -* ]]; then
+      AID_BRANCH="__interactive__"
+      _skip_next=0
+      # Fall through to re-process _arg in the case below.
+    else
+      AID_BRANCH="$_arg"
+      _skip_next=0
+      continue
+    fi
   fi
   case "$_arg" in
     -d|--debug)
       AID_DEBUG=1 ;;
-    -w|--worktree)
-      # value follows as the next arg
+    --branch)
+      _branch_flag=1
+      # value expected as next arg
       _skip_next=1 ;;
-    -w=*|--worktree=*)
-      AID_WORKTREE="${_arg#*=}" ;;
+    --branch=*)
+      _branch_flag=1
+      AID_BRANCH="${_arg#*=}"
+      [[ -z "$AID_BRANCH" ]] && AID_BRANCH="__interactive__" ;;
     *)
       _args+=("$_arg") ;;
   esac
 done
+# --branch at end of args with nothing following → interactive
 if [[ "$_skip_next" -eq 1 ]]; then
-  echo "aid: --worktree requires an argument" >&2; exit 1
+  AID_BRANCH="__interactive__"
 fi
 set -- "${_args[@]+"${_args[@]}"}"
 if [[ "$AID_DEBUG" -eq 1 ]]; then
   set -x
 fi
 
-# ── Worktree re-exec ──────────────────────────────────────────────────────────
-# If -w/--worktree was given, resolve the target worktree's aid.sh and re-exec
-# into it, forwarding all remaining args (including --debug if set).
-# Lookup order: absolute path → $AID_REPO/<name> → $AID_REPO/feature/<name>
-if [[ -n "$AID_WORKTREE" ]]; then
-  if [[ "$AID_WORKTREE" == /* ]]; then
-    _wt_dir="$AID_WORKTREE"
-    _wt_name="$(basename "$AID_WORKTREE")"
-  elif [[ -d "$AID_REPO/$AID_WORKTREE" ]]; then
-    _wt_dir="$AID_REPO/$AID_WORKTREE"
-    _wt_name="$AID_WORKTREE"
-  elif [[ -d "$AID_REPO/feature/$AID_WORKTREE" ]]; then
-    _wt_dir="$AID_REPO/feature/$AID_WORKTREE"
-    _wt_name="$AID_WORKTREE"
+# ── Branch re-exec ────────────────────────────────────────────────────────────
+# If --branch was given, clone/update ~/.local/share/aid/<branch> from the same
+# remote as the current install, bootstrap on first use, then re-exec into that
+# branch's aid.sh forwarding all remaining args.
+# --branch main is a no-op (you're already on main).
+# --branch with no value: list remote branches interactively.
+if [[ -n "$AID_BRANCH" ]]; then
+  _remote_url="$(git -C "$AID_DIR" remote get-url origin 2>/dev/null || true)"
+  if [[ -z "$_remote_url" ]]; then
+    echo "aid: cannot determine remote URL (no 'origin' remote in $AID_DIR)" >&2
+    exit 1
+  fi
+
+  # Interactive branch picker when no branch name was supplied.
+  if [[ "$AID_BRANCH" == "__interactive__" ]]; then
+    # List remote branches, strip 'origin/' prefix, exclude main and dev-docs.
+    mapfile -t _branches < <(
+      git -C "$AID_DIR" ls-remote --heads origin \
+        | awk '{sub(/refs\/heads\//, "", $2); print $2}' \
+        | grep -v -E '^(main|dev-docs)$'
+    )
+    if [[ ${#_branches[@]} -eq 0 ]]; then
+      echo "aid: no feature branches found on remote"
+      exit 0
+    fi
+    echo "available branches:"
+    for i in "${!_branches[@]}"; do
+      # Mark branches that already have a local install
+      _mark=""
+      [[ -d "$HOME/.local/share/aid/${_branches[$i]}" ]] && _mark=" (installed)"
+      printf "  [%d] %s%s\n" "$((i+1))" "${_branches[$i]}" "$_mark"
+    done
+    printf "branch [1-%d]: " "${#_branches[@]}"
+    read -r _choice
+    if [[ "$_choice" =~ ^[0-9]+$ ]] && (( _choice >= 1 && _choice <= ${#_branches[@]} )); then
+      AID_BRANCH="${_branches[$((_choice-1))]}"
+    else
+      echo "aid: invalid choice" >&2
+      exit 1
+    fi
+  fi
+
+  if [[ "$AID_BRANCH" == "main" ]]; then
+    echo "aid: already on main — nothing to do" >&2
+    exit 0
+  fi
+
+  _branch_dir="$HOME/.local/share/aid/${AID_BRANCH}"
+  if [[ -d "$_branch_dir" ]]; then
+    echo "aid: updating branch '${AID_BRANCH}' at ${_branch_dir} ..."
+    git -C "$_branch_dir" pull
   else
-    echo "aid: worktree '${AID_WORKTREE}' not found" >&2
-    echo "      looked in: ${AID_REPO}/${AID_WORKTREE}" >&2
-    echo "                 ${AID_REPO}/feature/${AID_WORKTREE}" >&2
+    echo "aid: cloning branch '${AID_BRANCH}' from ${_remote_url} ..."
+    if ! git clone --branch "$AID_BRANCH" --single-branch "$_remote_url" "$_branch_dir"; then
+      echo "aid: branch '${AID_BRANCH}' not found on remote" >&2
+      exit 1
+    fi
+  fi
+  _branch_aid="$_branch_dir/aid.sh"
+  if [[ ! -x "$_branch_aid" ]]; then
+    echo "aid: no executable aid.sh found in branch dir '${_branch_dir}'" >&2
     exit 1
   fi
-  _wt_aid="$_wt_dir/aid.sh"
-  if [[ ! -x "$_wt_aid" ]]; then
-    echo "aid: no executable aid.sh found in worktree '${_wt_dir}'" >&2
-    exit 1
-  fi
-  # Isolated runtime dirs — artifacts land in ~/.local/share/aid/<name>
-  # and personal config in ~/.config/aid/<name>, never in the source worktree.
-  export AID_DATA="$HOME/.local/share/aid/${_wt_name}"
-  export AID_CONFIG="$HOME/.config/aid/${_wt_name}"
-  # Auto-bootstrap the worktree's runtime dir on first use.
+  # Isolated runtime dirs — source is the cloned branch dir (AID_DATA == AID_DIR
+  # for branch installs, same as the production convention), personal config in
+  # ~/.config/aid/<branch>.
+  export AID_DATA="$_branch_dir"
+  export AID_CONFIG="$HOME/.config/aid/${AID_BRANCH}"
+  # Auto-bootstrap on first use.
   if [[ ! -d "$AID_DATA/tmux/plugins/tpm" ]]; then
-    echo "aid: first run for worktree '${_wt_name}' — bootstrapping ${AID_DATA} ..."
-    AID_DATA="$AID_DATA" AID_CONFIG="$AID_CONFIG" bash "$_wt_dir/install.sh"
+    echo "aid: first run for branch '${AID_BRANCH}' — bootstrapping ${AID_DATA} ..."
+    AID_DATA="$AID_DATA" AID_CONFIG="$AID_CONFIG" bash "$_branch_dir/install.sh"
   fi
-  # Re-build the arg list: restore --debug if it was set, then append remaining args.
+  # Re-build the arg list: restore --debug if set, then append remaining args.
   _fwd=()
   [[ "$AID_DEBUG" -eq 1 ]] && _fwd+=("--debug")
   _fwd+=("$@")
-  exec "$_wt_aid" "${_fwd[@]+"${_fwd[@]}"}"
+  exec "$_branch_aid" "${_fwd[@]+"${_fwd[@]}"}"
 fi
 
 # dbg <msg> — print step trace only in debug mode
@@ -121,10 +174,10 @@ Usage:
   aid -i, --install          (re)run install.sh — install/update plugins and symlinks
   aid --update               pull latest aid + re-run install.sh (alias for -i)
   aid -l, --list             list running sessions
-  aid -w, --worktree <name>  launch using a feature worktree's code instead of main
-                               <name> can be a branch/worktree name (e.g. T-009,
-                               cross-distro-install) or an absolute path.
-                               Lookup order: <repo>/<name>, then <repo>/feature/<name>.
+  aid --branch <name>        run a remote branch of aid in its own isolated install
+                               clones/updates ~/.local/share/aid/<name> from origin,
+                               bootstraps on first use, then re-execs into that aid.sh.
+                               Useful for testing feature branches before they land in main.
   aid -d, --debug            verbose output (set -x + step tracing)
   aid -h, --help             show this help
 EOF
