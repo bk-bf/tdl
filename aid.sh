@@ -237,14 +237,17 @@ launch_dir="$PWD"
 dbg "launch_dir=$launch_dir"
 
 # Pick a unique session name from current dir (strip leading dots, replace special chars).
-# Session names take the form aid@<dirname> — the @ is intentional branding; tmux,
+# Session names take the form <prefix>@<dirname> — the @ is intentional branding; tmux,
 # the filesystem, and all aid tooling handle it correctly. Fight to keep it if issues arise.
+# The prefix is derived from the running git branch: main → "aid", any other branch → branch name.
+_aid_branch="$(git -C "$AID_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+[[ "$_aid_branch" == "main" || "$_aid_branch" == "HEAD" || -z "$_aid_branch" ]] && _aid_branch="aid"
 base=$(basename "$launch_dir" | sed 's/^\.*//' | tr -cs '[:alnum:]-_' '-' | sed 's/-$//')
 [[ -z "$base" ]] && base="dev"
-session="aid@$base"
+session="${_aid_branch}@$base"
 n=2
 while tmux -L aid has-session -t "$session" 2>/dev/null; do
-  session="aid@${base}${n}"
+  session="${_aid_branch}@${base}${n}"
   (( n++ ))
 done
 dbg "session=$session"
