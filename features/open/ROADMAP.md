@@ -14,8 +14,8 @@
 
 ## Phase 3 — Publicize
 
-- [>] **T-009**: Opencode pane opt-in via flag (`aid --no-ai` skips opencode pane) — removes "requires opencode" adoption barrier
-- [x] **T-013**: `aid -w / --worktree <name>` — re-exec into a feature worktree's `aid.sh` without merging into main; lookup order: `<repo>/<name>` → `<repo>/feature/<name>` → absolute path; `--debug` forwarded correctly
+- [x] **T-009**: Opencode pane opt-in via flag (`aid --no-ai` skips opencode pane) — removes "requires opencode" adoption barrier
+- [x] **T-013**: `aid --branch <name>` — clone the named remote branch into an isolated install (`~/.local/share/aid/<name>`, `~/.config/aid/<name>`), bootstrap on first use, then re-exec into that branch's `aid.sh`. `--branch` with no argument shows an interactive remote branch picker. `--branch main` is a no-op. (Earlier `-w/--worktree` approach assumed a bare-repo worktree layout that only existed on the dev machine and was replaced by `--branch` which works from any install via the git remote.)
 - [ ] **T-010**: Terminal theme sync hook — optional integration point for syncing aid's palette with the host terminal emulator theme
 
 ## Phase 4 — Fleet (multi-agent parallel development)
@@ -37,7 +37,7 @@ Fleet is the tmux-native multi-agent orchestration layer for `aid`. It targets u
 
 ## Deferred / under consideration
 
-- [ ] **T-011**: Dev branch for bleeding-edge work
+- [x] **T-011**: Dev branch for bleeding-edge work — fulfilled by `aid --branch <name>`: any remote branch can be cloned into an isolated install and run independently without touching the main install
 - [ ] **T-018**: Allow `~/.config/opencode/` passthrough — currently `OPENCODE_CONFIG_DIR` is always set to `$AID_DIR/opencode`, which means users cannot carry their existing opencode config (custom models, API keys stored in opencode's config, etc.) into an aid session. A flag or env var to opt out of the override would remove this friction for users who already have an opencode setup they're happy with. Deferred until the scope of config merging is clearer.
 - [ ] **T-019**: User nvim/tmux override layer — a structured insertion point (e.g. `~/.config/aid/nvim/lua/user.lua` required last in `init.lua`) that lets users extend aid's config without forking the repo. Currently deferred because the scope of safely composing arbitrary user configs with aid's own plugin load order, keybinds, and autocmds is undefined. See ADR-012.
 - [ ] **T-024 / BUG-015**: Intermittent `E5560: writefile must not be called in a fast event context` after lazygit commit; needs stack trace on next occurrence to identify call site (see [bugs/watching/BUG-015.md](bugs/watching/BUG-015.md))
