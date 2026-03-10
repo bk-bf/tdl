@@ -1,6 +1,53 @@
 <!-- LOC cap: 344 (source: 2457, ratio: 0.14, updated: 2026-03-09) -->
 # T-003 / T-022 — Test Environment Setup
 
+## Task tracker
+
+**Branch:** `feature/cross-distro-install` (worktree: `aid/feature/cross-distro-install/`)
+**Status as of 2026-03-10**
+
+### Code changes
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | `_detect_distro()` in `install.sh` | ✅ done | Returns `arch\|debian\|fedora\|alpine\|opensuse\|macos\|unknown` |
+| 2 | `_require <cmd>` helper | ✅ done | Hard-abort with distro-specific hint; lsof non-fatal on Alpine |
+| 3 | `_ver_ge` semver helper | ✅ done | `sort -V` based; used for tmux and nvim version checks |
+| 4 | Pre-flight checks (git, curl, tmux ≥3.2, node, lsof) | ✅ done | Hard-abort with actionable messages |
+| 5 | nvim AppImage fallback for Debian/Ubuntu < 0.9 | ✅ done | Fetches latest stable tag from GitHub API; extracts if FUSE absent |
+| 6 | pynvim distro-dispatch (apt/dnf/zypper/pip3) | ✅ done | Replaces Arch-only pacman block |
+| 7 | delta distro-dispatch | ✅ done | apt (22.04+/Debian 12+ only), zypper, brew; skip-with-note on RHEL/old Debian |
+| 8 | `watch_and_update.sh`: `_pane_cwd` — `/proc/` on Linux, `lsof` on macOS | ✅ done | Both cwd-detection call-sites replaced |
+| 9 | `host-setup.sh` (KVM one-time host setup) | ✅ done | Arch-only; installs virt-manager/qemu/libvirt, adds user to groups |
+
+> **Uncommitted.** All 3 modified/new files (`install.sh`, `nvim-treemux/watch_and_update.sh`, `host-setup.sh`) are unstaged on `feature/cross-distro-install`. Syntax-checked clean (`bash -n`).
+
+### VM provisioning
+
+| # | VM | ISO downloaded | VM created | Snapshot `clean` taken | `install.sh` tested |
+|---|----|---------------|------------|----------------------|---------------------|
+| 1 | `ubuntu-2404` | [ ] | [ ] | [ ] | [ ] |
+| 2 | `ubuntu-2204` | [ ] | [ ] | [ ] | [ ] |
+| 3 | `debian-12` | [ ] | [ ] | [ ] | [ ] |
+| 4 | `debian-11` | [ ] | [ ] | [ ] | [ ] |
+| 5 | `fedora-42` | [ ] | [ ] | [ ] | [ ] |
+| 6 | `arch` | [ ] | [ ] | [ ] | [ ] |
+| 7 | `alpine-319` | [ ] | [ ] | [ ] | [ ] |
+| 8 | `rocky-9` | [ ] | [ ] | [ ] | [ ] |
+| 9 | `opensuse-tw` | [ ] | [ ] | [ ] | [ ] |
+| 10 | `ubuntu-2004` | [ ] | [ ] | [ ] | [ ] |
+
+### Remaining work
+
+- [ ] Commit changes on `feature/cross-distro-install`
+- [ ] Run `host-setup.sh` on Arch host (one-time)
+- [ ] Provision all 10 VMs per matrix above
+- [ ] Run `install.sh` on each VM and record result
+- [ ] Fix any failures found during VM testing
+- [ ] Open PR: `feature/cross-distro-install` → `main`
+
+
+
 KVM test environment for validating aid's cross-distro install support.
 
 ## Host setup (one time)
