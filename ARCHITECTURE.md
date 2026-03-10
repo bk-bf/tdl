@@ -42,6 +42,8 @@ aid -a             → interactive list; auto-attach if only one session
 aid -a <name>      → attach to named session directly and exit
 aid -i / --install → (re)run install.sh — install/update plugins and symlinks
 aid --update       → git pull + re-run install.sh (alias for -i)
+aid --branch <name>→ clone/pull remote branch into ~/.local/share/aid/<name>,
+                     bootstrap on first use, re-exec into that branch's aid.sh
 aid --no-ai        → create session without the opencode pane (T-009)
 aid               → create a new session in $PWD
 ```

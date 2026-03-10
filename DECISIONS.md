@@ -237,9 +237,9 @@ Combined with `NVIM_APPNAME=nvim` (main editor) and `NVIM_APPNAME=treemux` (side
 **Date**: 2026-03-10
 **Status**: Made — supersedes original ADR-014 (2026-03-09)
 
-**Decision**: TPM and all tmux plugins are cloned into `$AID_DATA/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/` for end users; `~/.local/share/aid/<name>/tmux/plugins/` for worktree sessions) rather than `$AID_DIR/tmux/plugins/` (inside the source worktree).
+**Decision**: TPM and all tmux plugins are cloned into `$AID_DATA/tmux/plugins/` (`~/.local/share/aid/tmux/plugins/` for end users; `~/.local/share/aid/<branch>/tmux/plugins/` for branch sessions) rather than `$AID_DIR/tmux/plugins/` (inside the source dir).
 
-**Reason**: The introduction of `AID_DATA` / `AID_CONFIG` isolation (for `aid -w <name>` worktree sessions) made the original placement untenable — two worktree sessions cannot share the same `$AID_DIR/tmux/plugins/` directory, and writing runtime-installed data into the source tree is wrong regardless. Moving plugins to `AID_DATA` achieves clean source/data separation: the repo holds only source files and config; runtime-installed data (TPM, treemux, etc.) lives in the XDG data hierarchy outside the repo. `tmux.conf` references plugins via `#{E:TMUX_PLUGIN_MANAGER_PATH}` and `#{E:AID_DATA}` (lazy tmux expansion) rather than hardcoded `AID_DIR` paths.
+**Reason**: The introduction of `AID_DATA` / `AID_CONFIG` isolation (for `aid --branch <name>` sessions) made the original placement untenable — two branch sessions cannot share the same `$AID_DIR/tmux/plugins/` directory, and writing runtime-installed data into the source tree is wrong regardless. Moving plugins to `AID_DATA` achieves clean source/data separation: the repo holds only source files and config; runtime-installed data (TPM, treemux, etc.) lives in the XDG data hierarchy outside the repo. `tmux.conf` references plugins via `#{E:TMUX_PLUGIN_MANAGER_PATH}` and `#{E:AID_DATA}` (lazy tmux expansion) rather than hardcoded `AID_DIR` paths.
 
 **For end users**: `AID_DATA` defaults to `~/.local/share/aid`, which is also where `boot.sh` clones the source. Plugins land at `~/.local/share/aid/tmux/plugins/` — same physical path as before, so there is no user-visible change.
 
@@ -253,7 +253,7 @@ ADRs in this section were previously made but overridden by a later decision. Ke
 
 ### ADR-014 (original, 2026-03-09): `tmux/plugins/` inside `AID_DIR`
 
-Superseded by ADR-014 (2026-03-10) above. Original decision kept plugins inside the repo (`$AID_DIR/tmux/plugins/`) to keep the worktree self-contained. This became untenable once `AID_DATA` isolation was introduced for `aid -w <name>` worktree sessions.
+Superseded by ADR-014 (2026-03-10) above. Original decision kept plugins inside the repo (`$AID_DIR/tmux/plugins/`) to keep the source self-contained. This became untenable once `AID_DATA` isolation was introduced for `aid --branch <name>` sessions.
 
 ### ADR-003, ADR-004: Earlier isolation model
 
