@@ -14,13 +14,10 @@ AID_IGNORE=""
 # For worktree sessions AID_DATA is set before re-exec and inherited here.
 AID_DATA="${AID_DATA:-$HOME/.local/share/aid}"
 AID_CONFIG="${AID_CONFIG:-$HOME/.config/aid}"
-XDG_DATA_HOME="$AID_DATA"
 XDG_STATE_HOME="$HOME/.local/state/aid"
 XDG_CACHE_HOME="$HOME/.cache/aid"
 OPENCODE_CONFIG_DIR="$AID_DIR/opencode"
 OPENCODE_TUI_CONFIG="$AID_DIR/opencode/tui.json"
-LG_CONFIG_FILE="$AID_CONFIG/lazygit/config.yml"
-TMUX_PLUGIN_MANAGER_PATH="$AID_DATA/tmux/plugins/"
 
 # ── Debug mode + worktree pre-pass ───────────────────────────────────────────
 # Consume -d/--debug and -w/--worktree before the main case so they compose
@@ -280,12 +277,12 @@ tmux -L aid set-environment -g AID_DIR                  "$AID_DIR"
 tmux -L aid set-environment -g AID_DATA                 "$AID_DATA"
 tmux -L aid set-environment -g AID_CONFIG               "$AID_CONFIG"
 tmux -L aid set-environment -g AID_IGNORE               "$AID_IGNORE"
-tmux -L aid set-environment -g XDG_DATA_HOME            "$XDG_DATA_HOME"
+tmux -L aid set-environment -g XDG_DATA_HOME            "$AID_DATA"
 tmux -L aid set-environment -g XDG_STATE_HOME           "$XDG_STATE_HOME"
 tmux -L aid set-environment -g XDG_CACHE_HOME           "$XDG_CACHE_HOME"
 tmux -L aid set-environment -g OPENCODE_CONFIG_DIR      "$OPENCODE_CONFIG_DIR"
 tmux -L aid set-environment -g OPENCODE_TUI_CONFIG      "$OPENCODE_TUI_CONFIG"
-tmux -L aid set-environment -g TMUX_PLUGIN_MANAGER_PATH "$TMUX_PLUGIN_MANAGER_PATH"
+tmux -L aid set-environment -g TMUX_PLUGIN_MANAGER_PATH "$AID_DATA/tmux/plugins/"
 # NVIM_APPNAME in the server environment means every pane shell inherits it.
 tmux -L aid set-environment -g NVIM_APPNAME "nvim"
 # AID_NVIM_SOCKET: session-local so concurrent sessions each target their own nvim.
@@ -333,7 +330,7 @@ tmux -L aid run-shell -t "$editor_pane_id" "$AID_DIR/ensure_treemux.sh"
 # To kill the session entirely: close the tmux window or run `aid kill`.
 dbg "respawning editor pane into nvim loop"
 tmux -L aid respawn-pane -k -t "$editor_pane_id" \
-  "cd $(printf '%q' "$launch_dir") && while true; do rm -f $(printf '%q' "$nvim_socket"); XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") XDG_DATA_HOME=$(printf '%q' "$XDG_DATA_HOME") XDG_STATE_HOME=$(printf '%q' "$XDG_STATE_HOME") XDG_CACHE_HOME=$(printf '%q' "$XDG_CACHE_HOME") LG_CONFIG_FILE=$(printf '%q' "$LG_CONFIG_FILE") NVIM_APPNAME=nvim nvim --listen $(printf '%q' "$nvim_socket"); done"
+  "cd $(printf '%q' "$launch_dir") && while true; do rm -f $(printf '%q' "$nvim_socket"); XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") XDG_DATA_HOME=$(printf '%q' "$AID_DATA") XDG_STATE_HOME=$(printf '%q' "$XDG_STATE_HOME") XDG_CACHE_HOME=$(printf '%q' "$XDG_CACHE_HOME") LG_CONFIG_FILE=$(printf '%q' "$AID_CONFIG/lazygit/config.yml") NVIM_APPNAME=nvim nvim --listen $(printf '%q' "$nvim_socket"); done"
 
 dbg "attaching to session=$session"
 attach_or_switch "$session"
