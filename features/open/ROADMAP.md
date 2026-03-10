@@ -5,8 +5,12 @@
 
 - [>] **T-003**: Test on non-Arch machines and environments (Ubuntu, macOS, SSH, tmux version variance)
 - [>] **T-022**: **Cross-distro install support** — expand `install.sh` beyond Arch/CachyOS so aid works out-of-the-box on mainstream Linux distros (Ubuntu/Debian, Fedora/RHEL, Alpine, Arch) and macOS. Currently the only managed dependency is `python-pynvim` via `pacman`; every other prerequisite is assumed present, which is false on stock Ubuntu/Fedora images.
+- [ ] **T-029**: **Pane resilience — tmux-level restart loops** — closing any pane (nvim editor, treemux sidebar, opencode) via `Ctrl-d` or `exit` destroys it permanently and leaves the session in a broken state; the nvim restart loop in `aid.sh` only guards against nvim exiting cleanly but is bypassed entirely by closing the tmux pane. Each managed pane (nvim editor, treemux sidebar, opencode) should have a `while true; do ... done` wrapper or `remain-on-exit` + `respawn-pane` hook so the session self-heals without requiring `aid -i` or a full restart. Related: T-028.
+- [ ] **T-028**: **Auto-close empty nvim tab on restart** — the nvim restart loop (`while true; do nvim ...; done`) opens a fresh nvim with an empty `[No Name]` buffer each time nvim exits; if the user had a file open when nvim crashed/quit, the new instance starts with an extra blank tab. Nvim should auto-close that tab (via `BufEnter` autocmd checking `bufname() == ""` and `len(getbufinfo({buflisted:1})) > 1`) once any real file is opened. Depends on T-029 for the broader restart-loop architecture.
 
 ## Phase 2 — Differentiate (architectural upgrades)
+
+- [ ] **T-027**: **Session name in tmux status bar** — display the active aid session name (`aid@<dirname>` or `<branch>@<dirname>`) on the right side of the tmux status bar, next to the filetype indicator. Useful when multiple sessions are running concurrently. Implementation: set a session-local tmux variable in `aid.sh` and reference it in `palette.conf` status-right.
 
 ## Phase 3 — Publicize
 
