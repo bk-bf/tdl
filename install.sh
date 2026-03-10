@@ -122,5 +122,6 @@ if [[ "$AID_DATA" == "$HOME/.local/share/aid" ]]; then
   echo "==> Ensure ~/.local/bin is on your PATH (it is by default on most distros)."
 fi
 
-echo ""
-echo "==> aid install complete. Run 'aid' in any directory to launch the IDE."
+_branch="$(git -C "$AID" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+_commit="$(git -C "$AID" rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+echo "==> aid install complete ($( [[ "$_branch" == "HEAD" ]] && echo "detached@${_commit}" || echo "${_branch}@${_commit}" )). Run 'aid' in any directory to launch the IDE."
