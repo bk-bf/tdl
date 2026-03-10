@@ -5,6 +5,8 @@
 set -euo pipefail
 
 AID_DIR="$(cd "$(dirname "$(realpath "${BASH_SOURCE[0]}")")" && pwd)"
+# Bare repo root is one level above the worktree (main/ → aid/).
+AID_REPO="$(dirname "$AID_DIR")"
 AID_IGNORE=""
 XDG_DATA_HOME="$HOME/.local/share/aid"
 XDG_STATE_HOME="$HOME/.local/state/aid"
@@ -16,21 +18,66 @@ LG_CONFIG_FILE="$HOME/.config/aid/lazygit/config.yml"
 # See docs/DECISIONS.md § ADR-014 if you want to reconsider moving plugins to XDG_DATA_HOME.
 TMUX_PLUGIN_MANAGER_PATH="$AID_DIR/tmux/plugins/"
 
-# ── Debug mode ───────────────────────────────────────────────────────────────
-# Consume -d/--debug before the main case so it composes with other flags.
-# e.g. `aid --debug -a mySession` works correctly.
+# ── Debug mode + worktree pre-pass ───────────────────────────────────────────
+# Consume -d/--debug and -w/--worktree before the main case so they compose
+# with other flags.  e.g. `aid --debug -w T-009` works correctly.
 AID_DEBUG=0
+AID_WORKTREE=""
 _args=()
+_skip_next=0
 for _arg in "$@"; do
-  if [[ "$_arg" == "-d" || "$_arg" == "--debug" ]]; then
-    AID_DEBUG=1
-  else
-    _args+=("$_arg")
+  if [[ "$_skip_next" -eq 1 ]]; then
+    AID_WORKTREE="$_arg"
+    _skip_next=0
+    continue
   fi
+  case "$_arg" in
+    -d|--debug)
+      AID_DEBUG=1 ;;
+    -w|--worktree)
+      # value follows as the next arg
+      _skip_next=1 ;;
+    -w=*|--worktree=*)
+      AID_WORKTREE="${_arg#*=}" ;;
+    *)
+      _args+=("$_arg") ;;
+  esac
 done
+if [[ "$_skip_next" -eq 1 ]]; then
+  echo "aid: --worktree requires an argument" >&2; exit 1
+fi
 set -- "${_args[@]+"${_args[@]}"}"
 if [[ "$AID_DEBUG" -eq 1 ]]; then
   set -x
+fi
+
+# ── Worktree re-exec ──────────────────────────────────────────────────────────
+# If -w/--worktree was given, resolve the target worktree's aid.sh and re-exec
+# into it, forwarding all remaining args (including --debug if set).
+# Lookup order: absolute path → $AID_REPO/<name> → $AID_REPO/feature/<name>
+if [[ -n "$AID_WORKTREE" ]]; then
+  if [[ "$AID_WORKTREE" == /* ]]; then
+    _wt_dir="$AID_WORKTREE"
+  elif [[ -d "$AID_REPO/$AID_WORKTREE" ]]; then
+    _wt_dir="$AID_REPO/$AID_WORKTREE"
+  elif [[ -d "$AID_REPO/feature/$AID_WORKTREE" ]]; then
+    _wt_dir="$AID_REPO/feature/$AID_WORKTREE"
+  else
+    echo "aid: worktree '${AID_WORKTREE}' not found" >&2
+    echo "      looked in: ${AID_REPO}/${AID_WORKTREE}" >&2
+    echo "                 ${AID_REPO}/feature/${AID_WORKTREE}" >&2
+    exit 1
+  fi
+  _wt_aid="$_wt_dir/aid.sh"
+  if [[ ! -x "$_wt_aid" ]]; then
+    echo "aid: no executable aid.sh found in worktree '${_wt_dir}'" >&2
+    exit 1
+  fi
+  # Re-build the arg list: restore --debug if it was set, then append remaining args.
+  _fwd=()
+  [[ "$AID_DEBUG" -eq 1 ]] && _fwd+=("--debug")
+  _fwd+=("$@")
+  exec "$_wt_aid" "${_fwd[@]+"${_fwd[@]}"}"
 fi
 
 # dbg <msg> — print step trace only in debug mode
@@ -55,14 +102,18 @@ case "${1:-}" in
 aid — AI-assisted dev environment
 
 Usage:
-  aid                   launch new session in current directory
-  aid -a, --attach      interactive session list to attach to
-  aid -a <name>         attach directly to named session
-  aid -i, --install     (re)run install.sh — install/update plugins and symlinks
-  aid --update          pull latest aid + re-run install.sh (alias for -i)
-  aid -l, --list        list running sessions
-  aid -d, --debug       verbose output (set -x + step tracing)
-  aid -h, --help        show this help
+  aid                        launch new session in current directory
+  aid -a, --attach           interactive session list to attach to
+  aid -a <name>              attach directly to named session
+  aid -i, --install          (re)run install.sh — install/update plugins and symlinks
+  aid --update               pull latest aid + re-run install.sh (alias for -i)
+  aid -l, --list             list running sessions
+  aid -w, --worktree <name>  launch using a feature worktree's code instead of main
+                               <name> can be a branch/worktree name (e.g. T-009,
+                               cross-distro-install) or an absolute path.
+                               Lookup order: <repo>/<name>, then <repo>/feature/<name>.
+  aid -d, --debug            verbose output (set -x + step tracing)
+  aid -h, --help             show this help
 EOF
     exit
     ;;
