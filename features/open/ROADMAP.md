@@ -42,7 +42,3 @@ Fleet is the tmux-native multi-agent orchestration layer for `aid`. It targets u
 - [ ] **T-024 / BUG-015**: Intermittent `E5560: writefile must not be called in a fast event context` after lazygit commit; needs stack trace on next occurrence to identify call site (see [bugs/watching/BUG-015.md](bugs/watching/BUG-015.md))
 - [ ] **T-025**: **Component-driven palette** — refactor `nvim/lua/palette.lua` from color-name keys (`purple`, `blue`, `lavender`) to role/component keys (`cursor_bg`, `mode_bg`, `statusline_base`, `statusline_mid`, etc.) so a reader of `palette.lua` immediately knows *what* each value affects without cross-referencing `init.lua`. The current color-name variables are consumed in multiple unrelated roles (e.g. `blue` drives both the nvim statusline devinfo segment and the tmux status bar base); splitting them into per-component keys removes that implicit coupling and makes palette customisation safe without needing to trace all call sites.
 
-## Done
-
-See [features/archive/ROADMAP-2026-03-10.md](../archive/ROADMAP-2026-03-10.md) for all completed items.
-
