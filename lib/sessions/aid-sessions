@@ -17,8 +17,9 @@
 #
 # Requirements: fzf >= 0.57
 #
-# TODO(T-ORC-5b): replace with a Go/Bubble Tea TUI for richer UX (proper
-#   cursor navigation, collapse animation, mouse support, inline rename).
+# Architecture: fzf is a pure selector — n/r/d exit fzf via --expect and are
+# handled inline in this script, then the navigator re-execs.  This avoids
+# any nested-fzf-inside-execute() problems (no tty ownership conflicts).
 
 set -euo pipefail
 
@@ -33,40 +34,10 @@ source "$AID_DIR/lib/sessions/aid-meta"
 # Exported so aid-sessions-list and aid-sessions-action can read it.
 export AID_SESSIONS_COLLAPSE
 AID_SESSIONS_COLLAPSE=$(mktemp /tmp/aid-sessions-collapse.XXXXXX)
-trap 'rm -f "$AID_SESSIONS_COLLAPSE"' EXIT
+trap 'rm -f "$AID_SESSIONS_COLLAPSE"; printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-_switch() {
-  local session="$1"
-  if [[ -n "${TMUX:-}" ]]; then
-    # Only use -c when AID_CALLER_CLIENT is a known client of the aid server.
-    local _c
-    if [[ -n "${AID_CALLER_CLIENT:-}" ]] && \
-       tmux -L aid list-clients -F "#{client_tty}" 2>/dev/null \
-         | grep -qxF "$AID_CALLER_CLIENT"; then
-      _c="$AID_CALLER_CLIENT"
-    fi
-    if [[ -n "${_c:-}" ]]; then
-      tmux -L aid switch-client -c "$_c" -t "$session"
-    else
-      tmux -L aid switch-client -t "$session"
-    fi
-  else
-    tmux -L aid attach -t "$session"
-  fi
-}
-
-# ── Main ──────────────────────────────────────────────────────────────────────
-
-if ! command -v fzf &>/dev/null; then
-  echo "aid-sessions: fzf not found — install fzf for the session navigator" >&2
-  tmux -L aid list-sessions -F "#{session_name}" 2>/dev/null \
-    | grep -E '^aid@[^/]+/[^/]+$' || true
-  exit 1
-fi
-
-# AID_CALLER_CLIENT — tty of the terminal that opened this navigator.
+# ── AID_CALLER_CLIENT ─────────────────────────────────────────────────────────
+# Tty of the terminal that opened this navigator.
 # Inherited from orchestrator.sh when launched via display-popup; derived here
 # otherwise.  Resolution order: inherited > TMUX_PANE lookup > tty fallback.
 if [[ -z "${AID_CALLER_CLIENT:-}" ]]; then
@@ -79,6 +50,99 @@ if [[ -z "${AID_CALLER_CLIENT:-}" ]]; then
 fi
 export AID_CALLER_CLIENT
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+_switch() {
+  local session="$1"
+  if [[ -n "${TMUX:-}" ]]; then
+    # Only use -c when AID_CALLER_CLIENT is a known client of the aid server.
+    local _c=""
+    if [[ -n "${AID_CALLER_CLIENT:-}" ]] && \
+       tmux -L aid list-clients -F "#{client_tty}" 2>/dev/null \
+         | grep -qxF "$AID_CALLER_CLIENT"; then
+      _c="$AID_CALLER_CLIENT"
+    fi
+    if [[ -n "$_c" ]]; then
+      tmux -L aid switch-client -c "$_c" -t "$session"
+    else
+      tmux -L aid switch-client -t "$session"
+    fi
+  else
+    tmux -L aid attach -t "$session"
+  fi
+}
+
+_fzf_prompt() {
+  local label="$1" default="$2"
+  printf '%s' "$default" \
+    | fzf --print-query \
+          --query="$default" \
+          --bind='enter:accept' \
+          --bind='esc:abort' \
+          --no-info \
+          --no-sort \
+          --height=4 \
+          --border=rounded \
+          --prompt="  ${label}: " \
+          --color='border:238,prompt:blue' \
+    | head -1
+}
+
+_do_rename() {
+  local session="$1"
+  case "$session" in __dead__*|__header__*) return ;; esac
+  local old_slug project new_slug
+  old_slug=$(printf '%s' "$session" | cut -d'/' -f2)
+  project=$(printf '%s' "$session"  | cut -d'@' -f2 | cut -d'/' -f1)
+
+  new_slug=$(_fzf_prompt "rename slug" "$old_slug") || return 0
+  new_slug=$(printf '%s' "${new_slug:-}" | tr -cs '[:alnum:]-_' '-' | sed 's/-$//')
+  [[ -z "$new_slug" || "$new_slug" == "$old_slug" ]] && return 0
+
+  local new_session="aid@${project}/${new_slug}"
+  if tmux -L aid has-session -t "$new_session" 2>/dev/null; then
+    printf 'error: session "%s" already exists\n' "$new_session"
+    sleep 1
+    return 0
+  fi
+
+  tmux -L aid rename-session -t "$session" "$new_session" 2>/dev/null || return 0
+  local repo; repo=$(_meta_get "$session" "repo_path")
+  _meta_write "$project" "$new_slug" "${repo:-$PWD}"
+  _meta_remove "$session"
+}
+
+_do_delete() {
+  local session="$1"
+  case "$session" in __header__*) return ;; esac
+  case "$session" in
+    __dead__*) session="${session#__dead__}" ;;
+  esac
+
+  local confirm
+  confirm=$(printf 'no\nyes' \
+    | fzf --no-info \
+          --no-sort \
+          --height=5 \
+          --border=rounded \
+          --prompt="  delete ${session}? " \
+          --color='border:238,prompt:yellow' \
+    || true)
+  [[ "$confirm" == "yes" ]] || return 0
+
+  tmux -L aid kill-session -t "$session" 2>/dev/null || true
+  _meta_remove "$session"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+if ! command -v fzf &>/dev/null; then
+  echo "aid-sessions: fzf not found — install fzf for the session navigator" >&2
+  tmux -L aid list-sessions -F "#{session_name}" 2>/dev/null \
+    | grep -E '^aid@[^/]+/[^/]+$' || true
+  exit 1
+fi
+
 # Pre-build the action and reload command strings (expanded once, safe paths).
 _act="AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions-action")"
 _lst="AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "$AID_SESSIONS_COLLAPSE") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions-list")"
@@ -90,7 +154,9 @@ if [[ -z "$_initial_list" ]]; then
   exit 0
 fi
 
-_selected=$(printf '%s\n' "$_initial_list" | fzf \
+# fzf is a pure selector.  n/r/d are captured via --expect so fzf exits and
+# this script handles the action inline (no nested fzf inside execute()).
+_output=$(printf '%s\n' "$_initial_list" | fzf \
   --prompt="  " \
   --border=rounded \
   --border-label=" aid sessions " \
@@ -101,29 +167,46 @@ _selected=$(printf '%s\n' "$_initial_list" | fzf \
   --delimiter='\t' \
   --with-nth=1 \
   --accept-nth='2' \
+  --expect='n,r,d' \
   --preview="$_act preview {}" \
   --preview-window='right:42%:wrap:border-left' \
   --preview-label=' info ' \
   --color='border:238,label:blue,preview-border:238,preview-label:blue,header:italic:242,prompt:blue,pointer:blue,hl:cyan,hl+:cyan' \
   --bind "ctrl-r:reload($_lst 2>/dev/null)" \
   --bind "z:execute-silent($_act toggle-collapse {})+reload($_lst 2>/dev/null)" \
-  --bind "r:execute($_act rename {})+reload($_lst 2>/dev/null)" \
-  --bind "d:execute($_act delete {})+reload($_lst 2>/dev/null)" \
-  --bind "n:execute-silent(AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_CONFIG=$(printf '%q' "${AID_CONFIG:-}") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/orchestrator.sh") --new)+abort" \
   --bind "q:abort" \
   --bind "esc:abort" \
   2>/dev/null \
   || true)
 
-# _selected is field 2 (--accept-nth=2); strip any residual brackets.
-_selected=$(printf '%s' "${_selected:-}" | tr -d '[]')
+# Parse output: line 1 = key pressed (empty = enter), line 2 = selected item.
+_key=$(printf '%s' "$_output" | head -1)
+_selected=$(printf '%s' "$_output" | tail -n +2 | tr -d '[]')
 
+case "$_key" in
+  n)
+    # New session — run prompt inline then re-open navigator.
+    export AID_IN_NEW_POPUP=1
+    exec "$AID_DIR/lib/orchestrator.sh" --new
+    ;;
+  r)
+    # Rename — run inline fzf prompt then re-open navigator.
+    _do_rename "$_selected"
+    exec "$AID_DIR/lib/sessions/aid-sessions"
+    ;;
+  d)
+    # Delete — run inline fzf prompt then re-open navigator.
+    _do_delete "$_selected"
+    exec "$AID_DIR/lib/sessions/aid-sessions"
+    ;;
+esac
+
+# enter key — dispatch on selected item tag.
 case "${_selected:-}" in
   "")
     exit 0
     ;;
   __header__*)
-    # Enter on a header → toggle collapse, reopen navigator.
     _project="${_selected#__header__}"
     if grep -qxF "$_project" "$AID_SESSIONS_COLLAPSE" 2>/dev/null; then
       grep -vxF "$_project" "$AID_SESSIONS_COLLAPSE" > "${AID_SESSIONS_COLLAPSE}.tmp" \

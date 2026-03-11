@@ -258,28 +258,24 @@ _fzf_prompt() {
 }
 
 _prompt_new_session() {
-  # Determine if we're inside the aid tmux server.
-  local _in_aid=0
-  if [[ -n "${TMUX:-}" ]]; then
-    local _s; _s=$(printf '%s' "${TMUX}" | cut -d',' -f1)
-    [[ "$(basename "$_s")" == "aid" ]] && _in_aid=1
-  fi
-
-  # Outside the aid server we already have a real tty — run prompts directly.
-  # Inside the server (e.g. prefix+s → --new) we need a popup for a tty.
-  if [[ "$_in_aid" -eq 0 ]]; then
-    # Inline: jump straight to the prompt body (set sentinel so spawn works).
-    AID_IN_NEW_POPUP=1
-  fi
-
-  # If we're not already inside the popup (and inside the server), open one.
+  # If not already inside a popup/inline context, decide whether to open one.
   if [[ "${AID_IN_NEW_POPUP:-0}" -ne 1 ]]; then
-    local _c _c_flag=()
-    _c=$(_aid_client_tty)
-    [[ -n "$_c" ]] && _c_flag=(-c "$_c")
-    tmux -L aid display-popup -E -w 72 -h 20 "${_c_flag[@]}" \
-      "AID_IN_NEW_POPUP=1 AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "$AID_CONFIG") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/orchestrator.sh") --new"
-    return
+    # Check if we're inside the aid tmux server.
+    local _in_aid=0
+    if [[ -n "${TMUX:-}" ]]; then
+      local _s; _s=$(printf '%s' "${TMUX}" | cut -d',' -f1)
+      [[ "$(basename "$_s")" == "aid" ]] && _in_aid=1
+    fi
+    if [[ "$_in_aid" -eq 1 ]]; then
+      # Inside the aid server: need a display-popup for a real tty.
+      local _c _c_flag=()
+      _c=$(_aid_client_tty)
+      [[ -n "$_c" ]] && _c_flag=(-c "$_c")
+      tmux -L aid display-popup -E -w 72 -h 20 "${_c_flag[@]}" \
+        "AID_IN_NEW_POPUP=1 AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "$AID_CONFIG") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/orchestrator.sh") --new"
+      return
+    fi
+    # Outside the aid server: we already have a real tty — run prompts directly.
   fi
 
   local default_project default_slug default_repo

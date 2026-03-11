@@ -3,7 +3,10 @@
 #
 # Usage: aid-sessions-action <action> <fzf-line>
 #
-# Actions: preview | rename | delete | toggle-collapse
+# Actions: preview | toggle-collapse
+#
+# rename and delete are now handled inline in aid-sessions (--expect state
+# machine) and no longer dispatched through this script.
 #
 # fzf-line is the full tab-delimited line from fzf: "DISPLAY\t[TAG]"
 #
@@ -73,70 +76,6 @@ _do_preview() {
   fi
 }
 
-# ── rename ─────────────────────────────────────────────────────────────────────
-_do_rename() {
-  case "$_raw_tag" in __dead__*|__header__*) return ;; esac
-  local session="$_raw_tag"
-  local old_slug project new_slug
-  old_slug=$(printf '%s' "$session" | cut -d'/' -f2)
-  project=$(printf '%s' "$session"  | cut -d'@' -f2 | cut -d'/' -f1)
-
-  new_slug=$(printf '%s' "$old_slug" \
-    | fzf --print-query \
-          --query="$old_slug" \
-          --bind='enter:accept' \
-          --bind='esc:abort' \
-          --no-info \
-          --no-sort \
-          --height=4 \
-          --border=rounded \
-          --prompt="  rename slug: " \
-          --color='border:238,prompt:blue' \
-    | head -1) || return 0
-  new_slug=$(printf '%s' "${new_slug:-}" | tr -cs '[:alnum:]-_' '-' | sed 's/-$//')
-  [[ -z "$new_slug" || "$new_slug" == "$old_slug" ]] && return
-
-  local new_session="aid@${project}/${new_slug}"
-  if tmux -L aid has-session -t "$new_session" 2>/dev/null; then
-    printf 'error: session "%s" already exists\n' "$new_session"
-    sleep 1
-    return
-  fi
-
-  tmux -L aid rename-session -t "$session" "$new_session" 2>/dev/null || return
-  local repo; repo=$(_meta_get "$session" "repo_path")
-  _meta_write "$project" "$new_slug" "${repo:-$PWD}"
-  _meta_remove "$session"
-  printf 'renamed → %s\n' "$new_session"
-  sleep 0.4
-}
-
-# ── delete ─────────────────────────────────────────────────────────────────────
-_do_delete() {
-  case "$_raw_tag" in __header__*) return ;; esac
-  local session
-  case "$_raw_tag" in
-    __dead__*) session="${_raw_tag#__dead__}" ;;
-    *)         session="$_raw_tag" ;;
-  esac
-
-  local confirm
-  confirm=$(printf 'no\nyes' \
-    | fzf --no-info \
-          --no-sort \
-          --height=5 \
-          --border=rounded \
-          --prompt="  delete ${session}? " \
-          --color='border:238,prompt:yellow' \
-    2>/dev/null || true)
-  [[ "$confirm" == "yes" ]] || return
-
-  tmux -L aid kill-session -t "$session" 2>/dev/null || true
-  _meta_remove "$session"
-  printf 'deleted.\n'
-  sleep 0.3
-}
-
 # ── toggle-collapse ────────────────────────────────────────────────────────────
 _do_toggle_collapse() {
   local collapse_file="${AID_SESSIONS_COLLAPSE:-}"
@@ -162,44 +101,8 @@ _do_toggle_collapse() {
 }
 
 # ── dispatch ───────────────────────────────────────────────────────────────────
-# rename and delete show interactive fzf prompts that need a real tty.
-# When called from inside fzf execute(...) there is no tty available.
-# Solution: re-exec inside a display-popup — but only when we're inside the
-# aid tmux server.  Outside the server (launched directly from a terminal),
-# the fzf execute() subshell still has the terminal's tty available via the
-# aid-sessions process, so we can run the fzf prompt inline.
-case "$_action" in
-  rename|delete)
-    if [[ "${AID_IN_ACTION_POPUP:-0}" -ne 1 ]]; then
-      # Check if we are inside the aid tmux server.
-      _in_aid=0
-      if [[ -n "${TMUX:-}" ]]; then
-        _tsock=$(printf '%s' "${TMUX}" | cut -d',' -f1)
-        [[ "$(basename "$_tsock")" == "aid" ]] && _in_aid=1
-      fi
-      if [[ "$_in_aid" -eq 1 ]]; then
-        # Inside server: need a popup for a real tty.
-        _client=""
-        if [[ -n "${AID_CALLER_CLIENT:-}" ]] && \
-           tmux -L aid list-clients -F "#{client_tty}" 2>/dev/null \
-             | grep -qxF "$AID_CALLER_CLIENT"; then
-          _client="$AID_CALLER_CLIENT"
-        fi
-        _c_flag=()
-        [[ -n "$_client" ]] && _c_flag=(-c "$_client")
-        tmux -L aid display-popup -E -w 72 -h 10 "${_c_flag[@]}" \
-          "AID_IN_ACTION_POPUP=1 AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DATA=$(printf '%q' "$AID_DATA") AID_DIR=$(printf '%q' "$AID_DIR") AID_SESSIONS_COLLAPSE=$(printf '%q' "${AID_SESSIONS_COLLAPSE:-}") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions-action") $(printf '%q' "$_action") $(printf '%q' "$_line")"
-        exit 0
-      fi
-      # Outside server: fall through and run inline (tty is inherited).
-    fi
-    ;;
-esac
-
 case "$_action" in
   preview)          _do_preview ;;
-  rename)           _do_rename ;;
-  delete)           _do_delete ;;
   toggle-collapse)  _do_toggle_collapse ;;
   *)
     printf 'aid-sessions-action: unknown action "%s"\n' "$_action" >&2
