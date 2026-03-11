@@ -201,27 +201,27 @@ spawn_orc_session() {
     _spawn_log "$debug_log" "dbg_pane=${dbg_pane} respawned (aid-sessions-debug)"
   fi
 
-  # ── Window 1: nvim ──
-  _spawn_log "$debug_log" "creating nvim window"
-  tmux -L aid new-window -t "$session" -n "nvim" -c "$repo_path"
-  local nvim_pane
-  nvim_pane=$(tmux -L aid list-panes -t "${session}:nvim" -F "#{pane_id}" | head -1)
-  _spawn_log "$debug_log" "nvim window created: nvim_pane=${nvim_pane}"
-
-  # Treemux sidebar in nvim window.
-  _tmx() { tmux -L aid show-option -gqv "$1"; }
-  local treemux_args
-  treemux_args="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,,$(_tmx @treemux-tree-client)"
-  local treemux_args_focus
-  treemux_args_focus="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,focus,$(_tmx @treemux-tree-client)"
-  tmux -L aid set-option -gq "@treemux-key-Tab"    "$treemux_args"
-  tmux -L aid set-option -gq "@treemux-key-Bspace" "$treemux_args_focus"
-  tmux -L aid run-shell -t "$nvim_pane" "$AID_DIR/lib/ensure_treemux.sh"
-
-  _spawn_log "$debug_log" "respawn nvim_pane=${nvim_pane}: nvim --listen ${nvim_socket}"
-  tmux -L aid respawn-pane -k -t "$nvim_pane" \
-    "cd $(printf '%q' "$repo_path") && while true; do rm -f $(printf '%q' "$nvim_socket"); XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") XDG_DATA_HOME=$(printf '%q' "$AID_DATA") XDG_STATE_HOME=$HOME/.local/state/aid XDG_CACHE_HOME=$HOME/.cache/aid LG_CONFIG_FILE=$(printf '%q' "$AID_CONFIG/lazygit/config.yml") NVIM_APPNAME=nvim nvim --listen $(printf '%q' "$nvim_socket"); done"
-  _spawn_log "$debug_log" "nvim_pane=${nvim_pane} respawned (nvim)"
+  # ── Window 1: nvim (DISABLED — uncomment to re-enable) ──
+  # _spawn_log "$debug_log" "creating nvim window"
+  # tmux -L aid new-window -t "$session" -n "nvim" -c "$repo_path"
+  # local nvim_pane
+  # nvim_pane=$(tmux -L aid list-panes -t "${session}:nvim" -F "#{pane_id}" | head -1)
+  # _spawn_log "$debug_log" "nvim window created: nvim_pane=${nvim_pane}"
+  #
+  # # Treemux sidebar in nvim window.
+  # _tmx() { tmux -L aid show-option -gqv "$1"; }
+  # local treemux_args
+  # treemux_args="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,,$(_tmx @treemux-tree-client)"
+  # local treemux_args_focus
+  # treemux_args_focus="$(_tmx @treemux-nvim-command),$(_tmx @treemux-tree-nvim-init-file),,$(_tmx @treemux-python-command),left,$(_tmx @treemux-tree-width),top,70%,editor,0.5,2,5,0,focus,$(_tmx @treemux-tree-client)"
+  # tmux -L aid set-option -gq "@treemux-key-Tab"    "$treemux_args"
+  # tmux -L aid set-option -gq "@treemux-key-Bspace" "$treemux_args_focus"
+  # tmux -L aid run-shell -t "$nvim_pane" "$AID_DIR/lib/ensure_treemux.sh"
+  #
+  # _spawn_log "$debug_log" "respawn nvim_pane=${nvim_pane}: nvim --listen ${nvim_socket}"
+  # tmux -L aid respawn-pane -k -t "$nvim_pane" \
+  #   "cd $(printf '%q' "$repo_path") && while true; do rm -f $(printf '%q' "$nvim_socket"); XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") XDG_DATA_HOME=$(printf '%q' "$AID_DATA") XDG_STATE_HOME=$HOME/.local/state/aid XDG_CACHE_HOME=$HOME/.cache/aid LG_CONFIG_FILE=$(printf '%q' "$AID_CONFIG/lazygit/config.yml") NVIM_APPNAME=nvim nvim --listen $(printf '%q' "$nvim_socket"); done"
+  # _spawn_log "$debug_log" "nvim_pane=${nvim_pane} respawned (nvim)"
 
   # Return to window 0 (3-pane layout).
   tmux -L aid select-window -t "${session}:0"
