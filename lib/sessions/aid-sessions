@@ -323,22 +323,24 @@ _load_conversation() {
 
 _fzf_prompt() {
   local label="$1" default="$2"
-  # Feed a single placeholder item so fzf has something to display.
-  # --print-query outputs the typed query on the first line regardless of
-  # selection; enter:replace-query+accept puts the typed text into the
-  # selection so the second line matches — but we only need head -1 (the query).
-  printf '\n' | fzf \
-      --print-query \
-      --query="$default" \
-      --bind='enter:replace-query+accept' \
-      --bind='esc:abort' \
-      --no-info \
-      --no-sort \
-      --height=4 \
-      --border=rounded \
-      --prompt="  ${label}: " \
-      --color='border:238,prompt:blue' \
-    | head -1
+  # Collect text input via a tmux floating popup so the sessions pane is not
+  # overwritten.  The popup runs a one-line bash read prompt; the result is
+  # written to a tempfile and read back here.
+  local _tmpfile; _tmpfile=$(mktemp /tmp/aid-prompt-XXXXXX)
+  local _popup_rc=0
+  # shellcheck disable=SC2016  # expansions intentional inside single quotes
+  tmux -L aid display-popup \
+    -E \
+    -x C -y C \
+    -w 50 -h 5 \
+    --border-style double \
+    "bash -c 'printf \"  %s: \" $(printf '%q' "$label"); read -r -e -i $(printf '%q' "$default") _v; printf \"%s\" \"\$_v\" > $(printf '%q' "$_tmpfile")'" \
+    2>/dev/null || _popup_rc=$?
+  local _result
+  _result=$(cat "$_tmpfile" 2>/dev/null || true)
+  rm -f "$_tmpfile"
+  [[ "$_popup_rc" -ne 0 ]] && return 1
+  printf '%s' "$_result"
 }
 
 _do_rename() {
@@ -498,8 +500,11 @@ _ticker_pid=$!
 # binds write the current position here (via execute-silent) just before
 # accept/abort so we can restore the cursor to the same row on reopen.
 _FZF_POS_FILE=$(mktemp /tmp/aid-fzf-pos-XXXXXX)
+# Companion file that captures the exit key for n/r/d binds (written alongside
+# _FZF_POS_FILE inside the fzf execute-silent so pos is always in sync with key).
+_FZF_KEY_FILE=$(mktemp /tmp/aid-fzf-key-XXXXXX)
 
-trap 'kill "$_ticker_pid" 2>/dev/null || true; rm -f "$_FZF_POS_FILE"; printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
+trap 'kill "$_ticker_pid" 2>/dev/null || true; rm -f "$_FZF_POS_FILE" "$_FZF_KEY_FILE"; printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
 
 # ── fzf loop ──────────────────────────────────────────────────────────────────
 # Instead of exec-ing back into aid-sessions on every action (which orphans the
@@ -540,7 +545,6 @@ while true; do
     --delimiter=$'\t' \
     --with-nth=1 \
     --accept-nth='2' \
-    --expect='n,r,d' \
     --preview="$_act preview {}" \
     --preview-window='right:45%:wrap:border-left:hidden' \
     --preview-label=' info ' \
@@ -583,6 +587,7 @@ while true; do
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
       [[ -n ${_dbglog} ]] && printf '%s KEY   enter FZF_POS=%s\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
       printf '%s' \"\${FZF_POS:-1}\" > $(printf '%q' "$_FZF_POS_FILE")
+      printf 'enter' > $(printf '%q' "$_FZF_KEY_FILE")
     )+accept" \
     --bind "esc:execute-silent(
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
@@ -596,32 +601,45 @@ while true; do
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
       [[ -n ${_dbglog} ]] && printf '%s ACTN  n (new session) FZF_POS=%s\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
       printf '%s' \"\${FZF_POS:-1}\" > $(printf '%q' "$_FZF_POS_FILE")
-    )" \
+      printf 'n' > $(printf '%q' "$_FZF_KEY_FILE")
+    )+accept" \
     --bind "r:execute-silent(
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
       [[ -n ${_dbglog} ]] && printf '%s ACTN  r (rename) FZF_POS=%s tag={2}\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
       printf '%s' \"\${FZF_POS:-1}\" > $(printf '%q' "$_FZF_POS_FILE")
-    )" \
+      printf 'r' > $(printf '%q' "$_FZF_KEY_FILE")
+    )+accept" \
     --bind "d:execute-silent(
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
       [[ -n ${_dbglog} ]] && printf '%s ACTN  d (delete) FZF_POS=%s tag={2}\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
       printf '%s' \"\${FZF_POS:-1}\" > $(printf '%q' "$_FZF_POS_FILE")
-    )" \
+      printf 'd' > $(printf '%q' "$_FZF_KEY_FILE")
+    )+accept" \
     2>/dev/null \
     || true)
 
-  _key=$(printf '%s\n' "$_output" | head -1)
-  _tag=$(printf '%s\n' "$_output" | tail -n +2 | tr -d '[]')
+  # n/r/d binds use +accept and write "key:tag" to _FZF_KEY_FILE so that
+  # FZF_POS is correctly captured inside execute-silent.  enter uses the normal
+  # --accept-nth=2 output path.  esc/q use +abort (fzf rc=1, _output is empty).
+  _key=$(cat "$_FZF_KEY_FILE" 2>/dev/null || true)
+  _tag=$(printf '%s' "$_output" | tr -d '[]')
 
-  # Restore cursor position: read FZF_POS written by the enter/n/r/d bind
-  # (execute-silent runs before accept/abort so the file is ready here).
+  # Restore cursor position: read FZF_POS written by the enter/n/r/d bind.
   # Fall back to 1 if the file is empty or missing (first open, esc/q quit).
   _start_pos=$(cat "$_FZF_POS_FILE" 2>/dev/null || true)
   : "${_start_pos:=1}"
-  # Reset the file so a subsequent esc/q doesn't reuse a stale position.
+  # Reset both files so a subsequent esc/q doesn't reuse stale values.
   printf '' > "$_FZF_POS_FILE"
+  printf '' > "$_FZF_KEY_FILE"
 
   _dbg KEY "fzf exited key='${_key:-enter}' tag='${_tag:-}' pos=${_start_pos}"
+
+  # esc/q: _output is empty (fzf rc=1 caught by || true).  Break the loop so
+  # the sessions pane collapses instead of re-running fzf forever.
+  if [[ -z "$_key" && -z "$_tag" ]]; then
+    _dbg ACTN "esc/q: breaking loop (sessions pane collapse)"
+    break
+  fi
 
   case "$_key" in
     n)
@@ -635,7 +653,7 @@ while true; do
     r)
       _dbg ACTN "r: rename tag='${_tag:-}'"
       _do_rename "$_tag"
-      # Force terminal repaint after the fzf prompt closed over it.
+      # Force terminal repaint after the popup closed over it.
       tput reset 2>/dev/null || true
       # Keep _start_pos from the bind so the cursor stays near the renamed item.
       continue
