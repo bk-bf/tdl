@@ -110,6 +110,10 @@ type tickMsg time.Time
 
 type switchedMsg struct{}
 
+type newSessionMsg struct{}
+
+type deleteSessionMsg struct{}
+
 // ── Init ────────────────────────────────────────────────────────────────────────
 
 func (m model) Init() tea.Cmd {
@@ -141,6 +145,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case switchedMsg:
 		return m, nil
+
+	case newSessionMsg, deleteSessionMsg:
+		// Trigger an immediate re-fetch so the tree updates promptly.
+		return m, fetchSessions()
 
 	case tea.KeyMsg:
 		if m.confirming {
@@ -307,11 +315,14 @@ func tickEvery(d time.Duration) tea.Cmd {
 }
 
 // fetchSessions discovers all aid@* orchestrator sessions via tmux, reads
-// their AID_ORC_PORT, and queries GET /session on each.
+// their AID_ORC_PORT (from session environment), and queries GET /session.
 func fetchSessions() tea.Cmd {
 	return func() tea.Msg {
+		// Only two fields needed: name + @aid_mode option.
+		// AID_ORC_PORT lives in session *environment*, not a tmux option,
+		// so we cannot read it via a format string — use show-environment below.
 		out, err := exec.Command("tmux", "-L", "aid", "list-sessions",
-			"-F", "#{session_name} #{@aid_mode} #{@AID_ORC_PORT}").Output()
+			"-F", "#{session_name} #{@aid_mode}").Output()
 		if err != nil {
 			// Server might not be running yet — return empty.
 			return fetchDoneMsg{}
@@ -323,7 +334,7 @@ func fetchSessions() tea.Cmd {
 				continue
 			}
 			parts := strings.Fields(line)
-			if len(parts) < 3 {
+			if len(parts) < 2 {
 				continue
 			}
 			name, mode := parts[0], parts[1]
@@ -333,14 +344,12 @@ func fetchSessions() tea.Cmd {
 			if !strings.HasPrefix(name, "aid@") {
 				continue
 			}
+
+			// Read port from session environment.
 			var port int
-			fmt.Sscanf(parts[2], "%d", &port)
-			if port == 0 {
-				// Try reading via show-environment.
-				portOut, _ := exec.Command("tmux", "-L", "aid", "show-environment",
-					"-t", name, "AID_ORC_PORT").Output()
-				fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(string(portOut)), "AID_ORC_PORT="), "%d", &port)
-			}
+			portOut, _ := exec.Command("tmux", "-L", "aid", "show-environment",
+				"-t", name, "AID_ORC_PORT").Output()
+			fmt.Sscanf(strings.TrimPrefix(strings.TrimSpace(string(portOut)), "AID_ORC_PORT="), "%d", &port)
 
 			sess := orcSession{
 				tmuxName:  name,
@@ -418,7 +427,7 @@ func newSession(aidDir string) tea.Cmd {
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		_ = cmd.Start()
-		return nil
+		return newSessionMsg{}
 	}
 }
 
@@ -426,7 +435,7 @@ func newSession(aidDir string) tea.Cmd {
 func deleteSession(tmuxSession string) tea.Cmd {
 	return func() tea.Msg {
 		_ = exec.Command("tmux", "-L", "aid", "kill-session", "-t", tmuxSession).Run()
-		return nil
+		return deleteSessionMsg{}
 	}
 }
 
