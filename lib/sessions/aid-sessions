@@ -519,7 +519,11 @@ _ticker_pid=$!
 _FZF_POS_FILE=$(mktemp /tmp/aid-fzf-pos-XXXXXX)
 _FZF_KEY_FILE=$(mktemp /tmp/aid-fzf-key-XXXXXX)
 # Bake tempfile paths into the event handler invocation string.
-_evt="${_evt_base} AID_FZF_POS_FILE=$(printf '%q' "$_FZF_POS_FILE") AID_FZF_KEY_FILE=$(printf '%q' "$_FZF_KEY_FILE")"
+# IMPORTANT: AID_FZF_POS_FILE and AID_FZF_KEY_FILE must appear BEFORE the
+# script path so the shell treats them as VAR=val env assignments, not as
+# positional arguments.  Appending them after the script path makes them $1/$2
+# inside aid-sessions-event, which causes the "unknown event" EVNT log entries.
+_evt="AID_FZF_POS_FILE=$(printf '%q' "$_FZF_POS_FILE") AID_FZF_KEY_FILE=$(printf '%q' "$_FZF_KEY_FILE") ${_evt_base}"
 
 trap 'kill "$_ticker_pid" 2>/dev/null || true; rm -f "$_FZF_POS_FILE" "$_FZF_KEY_FILE"; printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
 
@@ -563,8 +567,11 @@ while true; do
   #   esc/q     → log + abort (exits fzf with rc=1)
   #   ctrl-r    → transform: reload (list refresh)
   #
-  # Crash protection: fzf exit code is captured explicitly with || _fzf_rc=$?
-  # so that set -e / ERR trap never fires on fzf abort (rc=1) or signal death.
+  # ERR trap protection: set -e / ERR trap fires on a command-substitution
+  # assignment (_output=$(...)) when the subshell exits non-zero — the ||
+  # operator absorbs the exit code but the ERR trap still fires first.
+  # set +e suspends -e for this one statement; set -e re-enables it after.
+  set +e
   _fzf_rc=0
   _output=$(printf '%s\n' "$_initial_list" | fzf \
     --listen="${_fzf_port}" \
@@ -599,7 +606,9 @@ while true; do
     --bind "r:execute-silent(${_evt} r)+accept" \
     --bind "d:execute-silent(${_evt} d)+accept" \
     --bind "ctrl-r:transform:${_rld} ctrl-r" \
-    2>/dev/null) || _fzf_rc=$?
+    2>/dev/null)
+  _fzf_rc=$?
+  set -e
   _dbg KEY "fzf exited rc=${_fzf_rc}"
 
   # Read pos/key written by aid-sessions-event (enter/n/r/d paths).
