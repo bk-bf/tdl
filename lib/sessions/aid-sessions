@@ -107,6 +107,58 @@ _dbg PRUNE "prune dispatched to background"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+# Resolve the opencode HTTP port for a tmux session.
+# Prints the port number, or nothing if unavailable.
+_orc_port_for() {
+  local tmux_session="$1"
+  local _port
+  _port=$(tmux -L aid show-environment -t "$tmux_session" AID_ORC_PORT 2>/dev/null \
+    | cut -d= -f2- || true)
+  [[ -n "$_port" && "$_port" -gt 0 ]] 2>/dev/null && printf '%s' "$_port"
+}
+
+# Delete a single opencode session from the database via the HTTP API.
+# $1 = opencode session id, $2 = tmux session name
+_opencode_delete_conv() {
+  local conv_id="$1" tmux_session="$2"
+  local port; port=$(_orc_port_for "$tmux_session")
+  if [[ -z "$port" ]]; then
+    _dbg DEL "delete_conv: no port for ${tmux_session}, skipping API call"
+    return 0
+  fi
+  local _rc=0
+  curl -sf --max-time 5 \
+    -X DELETE \
+    "http://127.0.0.1:${port}/session/${conv_id}" \
+    >/dev/null 2>&1 || _rc=$?
+  _dbg DEL "delete_conv: DELETE /session/${conv_id} port=${port} rc=${_rc}"
+}
+
+# Delete all opencode conversations for a tmux session via the HTTP API.
+# $1 = tmux session name
+_opencode_delete_all_convs() {
+  local tmux_session="$1"
+  local port; port=$(_orc_port_for "$tmux_session")
+  if [[ -z "$port" ]]; then
+    _dbg DEL "delete_all_convs: no port for ${tmux_session}, skipping"
+    return 0
+  fi
+  local _json _ids _id
+  _json=$(curl -sf --max-time 5 \
+    -H 'Accept: application/json' \
+    "http://127.0.0.1:${port}/session" 2>/dev/null || true)
+  if ! command -v jq &>/dev/null || [[ -z "$_json" ]]; then
+    _dbg DEL "delete_all_convs: no json or jq unavailable"
+    return 0
+  fi
+  _ids=$(printf '%s' "$_json" | jq -r '.[].id' 2>/dev/null || true)
+  _dbg DEL "delete_all_convs: found ids: ${_ids:-<none>}"
+  while IFS= read -r _id; do
+    [[ -z "$_id" ]] && continue
+    _opencode_delete_conv "$_id" "$tmux_session"
+  done <<< "$_ids"
+}
+
 _aid_client_tty() {
   [[ -z "${AID_CALLER_CLIENT:-}" ]] && return 0
   tmux -L aid list-clients -F "#{client_tty}" 2>/dev/null \
@@ -213,14 +265,23 @@ _do_rename() {
 
 _do_delete() {
   local tag="$1"
-  local session
+  local _mode  # "conv" or "session"
+  local _conv_id _tmux_session
+
   case "$tag" in
-    dead:*)    session="${tag#dead:}" ;;
-    session:*) session="${tag#session:}" ;;
     conv:*)
+      # Delete a single opencode conversation from the DB.
       # tag format: conv:<session_id>:<tmux_session>
       local _rest="${tag#conv:}"
-      session="${_rest#*:}"
+      _conv_id="${_rest%%:*}"
+      _tmux_session="${_rest#*:}"
+      _mode="conv"
+      ;;
+    session:*|dead:*)
+      # Delete all conversations in this tmux session, then kill the session.
+      _tmux_session="${tag#session:}"
+      _tmux_session="${_tmux_session#dead:}"
+      _mode="session"
       ;;
     *)
       _dbg DEL "delete: unsupported tag type '${tag}', ignoring"
@@ -228,26 +289,39 @@ _do_delete() {
       ;;
   esac
 
-  _dbg DEL "confirm prompt for ${session}"
+  # Confirmation prompt.
+  local _prompt_label
+  if [[ "$_mode" == "conv" ]]; then
+    _prompt_label="delete conversation from ${_tmux_session}?"
+  else
+    _prompt_label="delete ALL conversations in ${_tmux_session}?"
+  fi
+  _dbg DEL "confirm prompt: ${_prompt_label}"
+
   local confirm
   confirm=$(fzf --no-info \
       --no-sort \
       --height=5 \
       --border=rounded \
-      --prompt="  delete ${session}? " \
+      --prompt="  ${_prompt_label} " \
       --color='border:238,prompt:yellow' \
       --bind="start:reload(printf 'no\nyes')" \
       < /dev/null \
     || true)
   if [[ "$confirm" != "yes" ]]; then
-    _dbg DEL "delete cancelled (confirm='${confirm:-<empty>}') for ${session}"
+    _dbg DEL "delete cancelled (confirm='${confirm:-<empty>}')"
     return 0
   fi
 
-  _dbg DEL "deleting ${session}"
-  tmux -L aid kill-session -t "$session" 2>/dev/null || true
-  _meta_remove "$session"
-  _dbg DEL "done: removed ${session}"
+  if [[ "$_mode" == "conv" ]]; then
+    _dbg DEL "deleting conv ${_conv_id} from ${_tmux_session}"
+    _opencode_delete_conv "$_conv_id" "$_tmux_session"
+    _dbg DEL "done: conv ${_conv_id} deleted"
+  else
+    _dbg DEL "deleting all convs in ${_tmux_session}"
+    _opencode_delete_all_convs "$_tmux_session"
+    _dbg DEL "done: all convs deleted from ${_tmux_session}"
+  fi
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
