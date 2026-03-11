@@ -157,11 +157,14 @@ _load_conversation() {
 
 _fzf_prompt() {
   local label="$1" default="$2"
-  # Empty stdin from /dev/null; fzf reads the tty for its UI.
-  # --print-query returns whatever the user typed (ignoring any item list).
-  fzf --print-query \
+  # Feed a single placeholder item so fzf has something to display.
+  # --print-query outputs the typed query on the first line regardless of
+  # selection; enter:replace-query+accept puts the typed text into the
+  # selection so the second line matches — but we only need head -1 (the query).
+  printf '\n' | fzf \
+      --print-query \
       --query="$default" \
-      --bind='enter:accept' \
+      --bind='enter:replace-query+accept' \
       --bind='esc:abort' \
       --no-info \
       --no-sort \
@@ -169,7 +172,6 @@ _fzf_prompt() {
       --border=rounded \
       --prompt="  ${label}: " \
       --color='border:238,prompt:blue' \
-      < /dev/null \
     | head -1
 }
 
