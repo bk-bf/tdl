@@ -183,6 +183,10 @@ spawn_orc_session() {
   # Focus the opencode (center) pane by default.
   tmux -L aid select-pane -t "$orc_pane"
 
+  # Tag this session as an orchestrator session so the launcher can
+  # distinguish it from plain aid sessions sharing the same tmux server.
+  tmux -L aid set-option -t "$session" "@aid_mode" "orchestrator"
+
   # Write metadata.
   _meta_write "$name" "$repo_path"
 
@@ -304,19 +308,20 @@ if [[ "${1:-}" == "--resurrect" ]]; then
   exit 0
 fi
 
-# Normal launch: find existing sessions for this branch install.
+# Normal launch: find existing orchestrator sessions (tagged @aid_mode=orchestrator).
+# This explicitly excludes plain aid sessions sharing the same tmux server.
 _existing=$(tmux -L aid list-sessions \
-  -F "#{session_last_attached} #{session_name}" 2>/dev/null \
-  | grep -E ' aid@[^_][^/]*$' \
+  -F "#{session_last_attached} #{@aid_mode} #{session_name}" 2>/dev/null \
+  | grep ' orchestrator ' \
   | sort -rn \
   | awk '{print $NF}' \
   || true)
 
 if [[ -z "$_existing" ]]; then
-  # No sessions yet — prompt for the first one.
+  # No orchestrator sessions yet — prompt to create the first one.
   _prompt_new_session
 else
-  # Auto-attach to most recently used session.
+  # Auto-attach to most recently used orchestrator session.
   _target=$(printf '%s\n' "$_existing" | head -1)
   dbg "auto-attaching to $_target"
   _attach_or_switch "$_target"

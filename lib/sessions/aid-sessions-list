@@ -76,11 +76,12 @@ _opencode_conversations() {
 
 # ── Build list ────────────────────────────────────────────────────────────────
 
-# Live aid@* sessions (aid@_bootstrap excluded), sorted by last_attached desc.
+# Live orchestrator sessions only (tagged @aid_mode=orchestrator at spawn time).
+# This excludes plain aid sessions that share the same tmux server.
 mapfile -t _live < <(
   tmux -L aid list-sessions \
-    -F "#{session_last_attached} #{session_name}" 2>/dev/null \
-    | grep -E ' aid@[^_][^/]*$' \
+    -F "#{session_last_attached} #{@aid_mode} #{session_name}" 2>/dev/null \
+    | grep ' orchestrator ' \
     | sort -rn \
     | awk '{print $NF}' \
     || true
