@@ -148,8 +148,7 @@ spawn_orc_session() {
   # vertically into nav | opencode.
   local dbg_pane="" debug_log=""
   if [[ "${AID_DEBUG:-0}" -eq 1 ]]; then
-    debug_log="${AID_DATA}/debug/aid-sessions-${name}.log"
-    mkdir -p "$(dirname "$debug_log")"
+    debug_log="${repo_path}/log.txt"
     : > "$debug_log"
     # Split bottom 25% off the initial (full-width) pane.
     dbg_pane=$(tmux -L aid split-window -v -t "$nav_pane" -P -F "#{pane_id}" \
