@@ -101,9 +101,9 @@ _prune_dead_sessions() {
   done <<< "$_all_meta"
   [[ "$_pruned" -gt 0 ]] && _dbg PRUNE "pruned ${_pruned} dead session(s) from metadata"
 }
-_dbg PRUNE "starting dead session prune"
-_prune_dead_sessions
-_dbg PRUNE "prune done"
+_dbg PRUNE "starting dead session prune (background)"
+_prune_dead_sessions &
+_dbg PRUNE "prune dispatched to background"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
