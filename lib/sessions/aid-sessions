@@ -259,8 +259,8 @@ while true; do
   # Pre-computed to keep shellcheck happy (it can't parse fzf action syntax).
   _bind_start="start:transform:
     _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
-    [[ -n ${_dbglog} ]] && printf '%s INIT  start event fired -> reload+pos(${_start_pos})\n' \"\$_ms\" >> ${_dbglog}
-    echo 'reload(${_lst} 2>/dev/null || true)+pos(${_start_pos})'
+    [[ -n ${_dbglog} ]] && printf '%s INIT  start event fired -> reload-sync+pos(${_start_pos})\n' \"\$_ms\" >> ${_dbglog}
+    echo 'reload-sync(${_lst} 2>/dev/null || true)+pos(${_start_pos})'
   "
 
   _output=$(printf '' | fzf \
