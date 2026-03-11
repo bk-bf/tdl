@@ -116,6 +116,10 @@ tmux -L aid display-menu \
   "${_menu_args[@]}" \
   2>/dev/null || true
 
+# Brief pause so tmux can fully repaint the pane after the menu overlay closes
+# before the caller restarts fzf on top of it.
+sleep 0.15
+
 # ── Collect answer ────────────────────────────────────────────────────────────
 _answer=$(cat "$_fifo" 2>/dev/null || true)
 kill "$_guard_pid" 2>/dev/null || true

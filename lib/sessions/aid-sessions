@@ -298,12 +298,12 @@ _do_delete() {
   fi
   _dbg DEL "confirm menu: ${_menu_title}"
 
-  local _answer
+  local _answer _popup_rc
   _answer=$(AID_DEBUG_LOG="${AID_DEBUG_LOG:-}" \
     "$AID_DIR/lib/sessions/aid-popup" -t "$_menu_title" -- "Yes:y" "No:n" \
-    || true)
+    2>/dev/null) || _popup_rc=$?
+  _dbg DEL "popup returned rc=${_popup_rc:-0} answer='${_answer:-<dismissed>}'"
 
-  _dbg DEL "confirm answer='${_answer:-<dismissed>}'"
   if [[ "$_answer" != "Yes" ]]; then
     _dbg DEL "delete cancelled"
     return 0
@@ -494,12 +494,16 @@ while true; do
     r)
       _dbg ACTN "r: rename tag='${_tag:-}'"
       _do_rename "$_tag"
+      # Force terminal repaint after the fzf prompt closed over it.
+      tput reset 2>/dev/null || true
       _start_pos=1
       continue
       ;;
     d)
       _dbg ACTN "d: delete tag='${_tag:-}'"
       _do_delete "$_tag"
+      # Force the terminal to repaint after display-menu closed over it.
+      tput reset 2>/dev/null || true
       _start_pos=1
       continue
       ;;
