@@ -77,6 +77,28 @@ fi
 
 _dbg INIT "aid-sessions starting (pid=$$, pane=${TMUX_PANE:-?}, port will be assigned below)"
 
+# ── Auto-prune dead sessions from metadata ────────────────────────────────────
+# Remove any session from sessions.json that no longer exists in tmux.
+# Dead sessions accumulate when tmux sessions are killed externally (e.g.
+# server restart) without going through aid's delete flow.
+# Runs once at startup; the fzf list is therefore always clean on open.
+_prune_dead_sessions() {
+  command -v jq &>/dev/null || return 0
+  local _all_meta _session _pruned=0
+  _all_meta=$(_meta_all_sessions 2>/dev/null || true)
+  [[ -z "$_all_meta" ]] && return 0
+  while IFS= read -r _session; do
+    [[ -z "$_session" ]] && continue
+    if ! tmux -L aid has-session -t "$_session" 2>/dev/null; then
+      _dbg PRUNE "removing dead session from metadata: ${_session}"
+      _meta_remove "$_session"
+      _pruned=$(( _pruned + 1 ))
+    fi
+  done <<< "$_all_meta"
+  [[ "$_pruned" -gt 0 ]] && _dbg PRUNE "pruned ${_pruned} dead session(s) from metadata"
+}
+_prune_dead_sessions
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 _aid_client_tty() {
@@ -129,17 +151,19 @@ _load_conversation() {
 
 _fzf_prompt() {
   local label="$1" default="$2"
-  printf '%s' "$default" \
-    | fzf --print-query \
-          --query="$default" \
-          --bind='enter:accept' \
-          --bind='esc:abort' \
-          --no-info \
-          --no-sort \
-          --height=4 \
-          --border=rounded \
-          --prompt="  ${label}: " \
-          --color='border:238,prompt:blue' \
+  # Empty stdin from /dev/null; fzf reads the tty for its UI.
+  # --print-query returns whatever the user typed (ignoring any item list).
+  fzf --print-query \
+      --query="$default" \
+      --bind='enter:accept' \
+      --bind='esc:abort' \
+      --no-info \
+      --no-sort \
+      --height=4 \
+      --border=rounded \
+      --prompt="  ${label}: " \
+      --color='border:238,prompt:blue' \
+      < /dev/null \
     | head -1
 }
 
@@ -151,6 +175,7 @@ _do_rename() {
   local old_name new_name
   old_name="${session#aid@}"
 
+  _dbg RENAME "prompt for rename of ${session}"
   new_name=$(_fzf_prompt "rename" "$old_name") || return 0
   new_name=$(printf '%s' "${new_name:-}" | tr -cs '[:alnum:]-_.' '-' | sed 's/-$//')
   [[ -z "$new_name" || "$new_name" == "$old_name" ]] && return 0
@@ -162,10 +187,12 @@ _do_rename() {
     return 0
   fi
 
+  _dbg RENAME "renaming ${session} -> ${new_session}"
   tmux -L aid rename-session -t "$session" "$new_session" 2>/dev/null || return 0
   local repo; repo=$(_meta_get "$session" "repo_path")
   _meta_write "$new_name" "${repo:-$PWD}"
   _meta_remove "$session"
+  _dbg RENAME "done: old=${session} new=${new_session}"
 }
 
 _do_delete() {
@@ -177,19 +204,26 @@ _do_delete() {
     *)         return ;;
   esac
 
+  _dbg DEL "confirm prompt for ${session}"
   local confirm
-  confirm=$(printf 'no\nyes' \
-    | fzf --no-info \
-          --no-sort \
-          --height=5 \
-          --border=rounded \
-          --prompt="  delete ${session}? " \
-          --color='border:238,prompt:yellow' \
+  confirm=$(fzf --no-info \
+      --no-sort \
+      --height=5 \
+      --border=rounded \
+      --prompt="  delete ${session}? " \
+      --color='border:238,prompt:yellow' \
+      --bind="start:reload(printf 'no\nyes')" \
+      < /dev/null \
     || true)
-  [[ "$confirm" == "yes" ]] || return 0
+  if [[ "$confirm" != "yes" ]]; then
+    _dbg DEL "delete cancelled (confirm='${confirm:-<empty>}') for ${session}"
+    return 0
+  fi
 
+  _dbg DEL "deleting ${session}"
   tmux -L aid kill-session -t "$session" 2>/dev/null || true
   _meta_remove "$session"
+  _dbg DEL "done: removed ${session}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -325,8 +359,26 @@ while true; do
       _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
       [[ -n ${_dbglog} ]] && printf '%s KEY   enter FZF_POS=%s\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
     )+accept" \
-    --bind "esc:abort" \
-    --bind "q:abort" \
+    --bind "esc:execute-silent(
+      _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
+      [[ -n ${_dbglog} ]] && printf '%s KEY   esc (quit)\n' \"\$_ms\" >> ${_dbglog}
+    )+abort" \
+    --bind "q:execute-silent(
+      _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
+      [[ -n ${_dbglog} ]] && printf '%s KEY   q (quit)\n' \"\$_ms\" >> ${_dbglog}
+    )+abort" \
+    --bind "n:execute-silent(
+      _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
+      [[ -n ${_dbglog} ]] && printf '%s ACTN  n (new session) FZF_POS=%s\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
+    )" \
+    --bind "r:execute-silent(
+      _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
+      [[ -n ${_dbglog} ]] && printf '%s ACTN  r (rename) FZF_POS=%s tag={2}\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
+    )" \
+    --bind "d:execute-silent(
+      _ms=\$(date +%s%3N 2>/dev/null || printf '%s000' \"\$(date +%s)\")
+      [[ -n ${_dbglog} ]] && printf '%s ACTN  d (delete) FZF_POS=%s tag={2}\n' \"\$_ms\" \"\${FZF_POS:-?}\" >> ${_dbglog}
+    )" \
     2>/dev/null \
     || true)
 
@@ -340,18 +392,18 @@ while true; do
 
   case "$_key" in
     n)
+      _dbg ACTN "n: spawning new session"
       exec "$AID_DIR/lib/orchestrator.sh" --new
       ;;
     r)
+      _dbg ACTN "r: rename tag='${_tag:-}'"
       _do_rename "$_tag"
-      # Stay near the renamed item — it will have shifted by at most one row.
-      # We don't know the exact new position, so keep the current one as a hint.
       _start_pos=1
       continue
       ;;
     d)
+      _dbg ACTN "d: delete tag='${_tag:-}'"
       _do_delete "$_tag"
-      # After a delete the list shrinks; stay at the same row (clamped by fzf).
       _start_pos=1
       continue
       ;;
@@ -360,10 +412,12 @@ while true; do
   # Enter: dispatch on tag type.
   case "${_tag:-}" in
     ""|"(no sessions yet)"|sep)
+      _dbg ACTN "enter: ignored (tag='${_tag:-}')"
       continue
       ;;
     session:*)
       _target="${_tag#session:}"
+      _dbg ACTN "enter: switch to session ${_target}"
       _switch_to_session "$_target"
       continue
       ;;
@@ -371,9 +425,11 @@ while true; do
       _dead_session="${_tag#dead:}"
       _repo=$(_meta_get "$_dead_session" "repo_path")
       _name="${_dead_session#aid@}"
+      _dbg ACTN "enter: resurrect dead session ${_dead_session} repo=${_repo:-<none>}"
       if [[ -d "${_repo:-}" ]]; then
         exec "$AID_DIR/lib/orchestrator.sh" --resurrect "$_name" "$_repo"
       else
+        _dbg ACTN "enter: repo missing for ${_dead_session}, cannot resurrect"
         echo "aid-sessions: repo '${_repo}' no longer exists for $_dead_session" >&2
         sleep 2
         continue
@@ -384,10 +440,12 @@ while true; do
       _rest="${_tag#conv:}"
       _conv_id="${_rest%%:*}"
       _tmux_session="${_rest#*:}"
+      _dbg ACTN "enter: load conv ${_conv_id} in session ${_tmux_session}"
       _load_conversation "$_conv_id" "$_tmux_session"
       continue
       ;;
     noconv:*)
+      _dbg ACTN "enter: ignored (noconv tag)"
       continue
       ;;
     *)
