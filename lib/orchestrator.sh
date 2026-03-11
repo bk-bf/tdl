@@ -138,6 +138,11 @@ spawn_orc_session() {
   tmux -L aid respawn-pane -k -t "$nvim_pane_id" \
     "cd $(printf '%q' "$repo_path") && while true; do rm -f $(printf '%q' "$nvim_socket"); XDG_CONFIG_HOME=$(printf '%q' "$AID_DIR") XDG_DATA_HOME=$(printf '%q' "$AID_DATA") XDG_STATE_HOME=$HOME/.local/state/aid XDG_CACHE_HOME=$HOME/.cache/aid LG_CONFIG_FILE=$(printf '%q' "$AID_CONFIG/lazygit/config.yml") NVIM_APPNAME=nvim nvim --listen $(printf '%q' "$nvim_socket"); done"
 
+  # Open treemux sidebar in the nvim window too (T-ORC-6).
+  # run-shell executes ensure_treemux.sh in the context of the nvim pane so the
+  # sidebar opens on the left, leaving nvim as the right/focus pane.
+  tmux -L aid run-shell -t "$nvim_pane_id" "$AID_DIR/lib/ensure_treemux.sh"
+
   # Switch back to window 0 (opencode layout) as the default entry point.
   tmux -L aid select-window -t "${session}:0"
 
@@ -147,6 +152,18 @@ spawn_orc_session() {
   # Hook: update last_active timestamp whenever any pane in this session is focused.
   tmux -L aid set-hook -t "$session" pane-focus-in \
     "run-shell \"AID_DATA=$(printf '%q' "$AID_DATA") $(printf '%q' "$AID_DIR/lib/sessions/aid-meta-touch") aid@${project}/${slug}\""
+
+  # T-ORC-7: Status bar context tracking.
+  # When the nvim window is focused, let vim-tpipeline drive status-left/right
+  # via the vimbridge files.  When any other window (opencode layout) is focused,
+  # show a static project/slug label so the bar doesn't display stale nvim output.
+  local _orc_label=" ${project}/${slug} "
+  local _vimbridge_l="#(cat \#{socket_path}-\#{session_id}-vimbridge)"
+  local _vimbridge_r="#(cat \#{socket_path}-\#{session_id}-vimbridge-R)"
+  tmux -L aid set-hook -t "$session" window-focus \
+    "if-shell '[ \"#{window_name}\" = nvim ]' \
+       'set-option -t $(printf '%q' "$session") status-left $(printf '%q' "$_vimbridge_l") ; set-option -t $(printf '%q' "$session") status-right $(printf '%q' "$_vimbridge_r")' \
+       'set-option -t $(printf '%q' "$session") status-left $(printf '%q' "$_orc_label") ; set-option -t $(printf '%q' "$session") status-right \"\"'"
 
   dbg "session $session ready"
   _attach_or_switch "$session"
