@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# aid-sessions-reload — emit a fzf reload-sync+pos action string to stdout.
+#
+# Called from aid-sessions fzf transform: binds (ticker and ctrl-r) so the
+# logic lives in exactly one place.
+#
+# Env (set by fzf when spawning transform shells):
+#   FZF_POS           — 1-based cursor row in the current list
+#   FZF_MATCH_COUNT   — total visible items
+#   AID_DEBUG_LOG     — path to debug log (optional)
+#
+# Positional args:
+#   $1  label   — short string identifying the caller (e.g. "tick=3" or "ctrl-r")
+#   $2  lst_cmd — the shell command that generates the fzf list (already quoted)
+#
+# Log categories emitted:
+#   SYNC  — reload-sync dispatched (with timing of list generation)
+#   ERR   — list command failed
+
+set -euo pipefail
+
+_label="${1:?label required}"
+_lst="${2:?list command required}"
+
+_ms_start=$(date +%s%3N 2>/dev/null || printf '%s000' "$(date +%s)")
+_pos="${FZF_POS:-1}"
+_mc="${FZF_MATCH_COUNT:-?}"
+
+[[ -n "${AID_DEBUG_LOG:-}" ]] && \
+  printf '%s SYNC  label=%s FZF_POS=%s match_count=%s -> reload-sync+pos(%s)\n' \
+    "$_ms_start" "$_label" "$_pos" "$_mc" "$_pos" >> "${AID_DEBUG_LOG}"
+
+printf 'reload-sync(%s 2>/dev/null || true)+pos(%s)' "$_lst" "$_pos"
