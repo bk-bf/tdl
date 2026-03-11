@@ -7,13 +7,12 @@
 #   [navigator ~25%] | [opencode ~50%] | [lazygit ~25%]
 #   [tab: nvim — full width]
 #
-# The navigator (left pane) runs aid-sessions in a persistent fzf loop and
-# shows all aid@* sessions as folders with their opencode conversations as
-# children.  Selecting a conversation respawns the center pane with
-#   opencode -s <session_id> <repo_path>
+# The navigator (left pane) runs aid-nav, a bubbletea TUI that shows all
+# aid@* orchestrator sessions and their opencode conversations.  Selecting a
+# conversation calls POST /tui/select-session on the session's opencode port
 # so the conversation switches without losing any history (opencode DB persists).
 #
-# On first launch with no existing sessions: prompt for name + repo, spawn layout.
+# On first launch with no existing sessions: auto-create from cwd basename.
 # On subsequent launches: auto-attach to the most recently used aid@* session.
 #
 # This script is exec'd by aid.sh when --mode orchestrator is passed.
@@ -105,6 +104,11 @@ spawn_orc_session() {
   safe_name=$(printf '%s' "$name" | tr '/' '-')
   nvim_socket="/tmp/aid-nvim-${safe_name}.sock"
 
+  # Deterministic HTTP port for this session's opencode server.
+  # Range 4200-5199 — derived from session name so it's stable across restarts.
+  local orc_port
+  orc_port=$(( 4200 + $(printf '%s' "$name" | cksum | cut -d' ' -f1) % 1000 ))
+
   tmux -L aid new-session -d -s "$session" -c "$repo_path" \
     -x "$(tput cols)" -y "$(tput lines)"
 
@@ -123,6 +127,7 @@ spawn_orc_session() {
   tmux -L aid set-environment -t "$session" AID_NVIM_SOCKET   "$nvim_socket"
   tmux -L aid set-environment -t "$session" AID_ORC_NAME      "$name"
   tmux -L aid set-environment -t "$session" AID_ORC_REPO      "$repo_path"
+  tmux -L aid set-environment -t "$session" AID_ORC_PORT      "$orc_port"
 
   # ── Build the 3-pane layout ──
   # Window 0 starts with a single pane.  We split it into three columns:
@@ -152,13 +157,14 @@ spawn_orc_session() {
   tmux -L aid respawn-pane -k -t "$lazygit_pane" \
     "cd $(printf '%q' "$repo_path") && lazygit --use-config-file=$(printf '%q' "$AID_CONFIG/lazygit/config.yml")"
 
-  # Start opencode in the center pane.
+  # Start opencode in the center pane with a fixed HTTP port so the navigator
+  # can reach the /tui/select-session API without port discovery.
   tmux -L aid respawn-pane -k -t "$orc_pane" \
-    "OPENCODE_CONFIG_DIR=$(printf '%q' "$AID_DIR/opencode") OPENCODE_TUI_CONFIG=$(printf '%q' "$AID_DIR/opencode/tui.json") opencode $(printf '%q' "$repo_path")"
+    "OPENCODE_CONFIG_DIR=$(printf '%q' "$AID_DIR/opencode") OPENCODE_TUI_CONFIG=$(printf '%q' "$AID_DIR/opencode/tui.json") opencode --port ${orc_port} $(printf '%q' "$repo_path")"
 
-  # Start the navigator in the left pane.
+  # Start the navigator in the left pane (aid-nav: bubbletea TUI).
   tmux -L aid respawn-pane -k -t "$nav_pane" \
-    "AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "${AID_CONFIG:-}") $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions")"
+    "AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "${AID_CONFIG:-}") $(printf '%q' "$AID_DIR/lib/sessions/aid-nav")"
 
   # ── Window 1: nvim ──
   tmux -L aid new-window -t "$session" -n "nvim" -c "$repo_path"
