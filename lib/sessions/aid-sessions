@@ -209,7 +209,6 @@ _tag=$(printf '%s\n' "$_output" | tail -n +2 | tr -d '[]')
 
 case "$_key" in
   n)
-    export AID_IN_NEW_POPUP=1
     exec "$AID_DIR/lib/orchestrator.sh" --new
     ;;
   r)

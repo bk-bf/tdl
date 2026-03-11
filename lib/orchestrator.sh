@@ -209,96 +209,38 @@ spawn_orc_session() {
 
 # ── New session prompt ────────────────────────────────────────────────────────
 
-_fzf_prompt() {
-  local label="$1" default="$2"
-  printf '%s' "$default" \
-    | fzf --print-query \
-          --query="$default" \
-          --bind='enter:accept' \
-          --bind='esc:abort' \
-          --no-info \
-          --no-sort \
-          --height=4 \
-          --border=rounded \
-          --prompt="  ${label}: " \
-          --color='border:238,prompt:blue' \
-    | head -1
-}
+# _new_session_from_cwd
+# Auto-derive session name from $PWD + the aid branch (same logic as aid.sh).
+# Name form: <aid_branch>@<basename_of_pwd>  (e.g. aid@my-project)
+# Appends a numeric suffix to avoid collisions with existing sessions.
+# No user prompts — spawns immediately.
+_new_session_from_cwd() {
+  local repo_path="$PWD"
 
-_prompt_new_session() {
-  # If not already in a popup/inline context and inside the aid server, open a popup.
-  if [[ "${AID_IN_NEW_POPUP:-0}" -ne 1 ]]; then
-    local _in_aid=0
-    if [[ -n "${TMUX:-}" ]]; then
-      local _s; _s=$(printf '%s' "${TMUX}" | cut -d',' -f1)
-      [[ "$(basename "$_s")" == "aid" ]] && _in_aid=1
-    fi
-    if [[ "$_in_aid" -eq 1 ]]; then
-      # Need a popup for a real tty.
-      local _c _c_flag=()
-      if [[ -n "${AID_CALLER_CLIENT:-}" ]] && \
-         tmux -L aid list-clients -F "#{client_tty}" 2>/dev/null \
-           | grep -qxF "${AID_CALLER_CLIENT}"; then
-        _c="${AID_CALLER_CLIENT}"
-        _c_flag=(-c "$_c")
-      fi
-      tmux -L aid display-popup -E -w 72 -h 20 "${_c_flag[@]}" \
-        "AID_IN_NEW_POPUP=1 AID_CALLER_CLIENT=$(printf '%q' "${AID_CALLER_CLIENT:-}") AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "$AID_CONFIG") TMUX=$(printf '%q' "${TMUX:-}") $(printf '%q' "$AID_DIR/lib/orchestrator.sh") --new"
-      return
-    fi
-    # Outside the aid server: already have a real tty, fall through.
-  fi
+  # Base name: sanitised basename of the repo path (same transform as aid.sh).
+  local base
+  base=$(basename "$repo_path" | sed 's/^\.*//' | tr -cs '[:alnum:]-_' '-' | sed 's/-$//')
+  [[ -z "$base" ]] && base="dev"
 
-  # Prompt for session name and repo path.
-  local default_name default_repo
-  default_repo="$PWD"
-  default_name=$(basename "$PWD" | sed 's/^\.*//' | tr -cs '[:alnum:]-_.' '-' | sed 's/-$//')
-  [[ -z "$default_name" ]] && default_name="dev"
+  # Append a numeric suffix if a session with this name already exists.
+  # spawn_orc_session prepends "aid@", so we check "aid@${name}".
+  local name="$base"
+  local n=2
+  while tmux -L aid has-session -t "aid@${name}" 2>/dev/null; do
+    name="${base}${n}"
+    (( n++ ))
+  done
 
-  local _name
-  _name=$(_fzf_prompt "session name" "$default_name") \
-    || { echo "aid: cancelled" >&2; exit 1; }
-  _name=$(printf '%s' "${_name:-$default_name}" | tr -cs '[:alnum:]-_.' '-' | sed 's/-$//')
-  [[ -z "$_name" ]] && _name="$default_name"
-
-  # Check for name collision.
-  if tmux -L aid has-session -t "aid@${_name}" 2>/dev/null; then
-    echo "aid: session 'aid@${_name}' already exists" >&2
-    exit 1
-  fi
-
-  # Repo path: fzf over find output.
-  local _repo
-  _repo=$(find "$HOME" -maxdepth 5 -type d 2>/dev/null \
-    | fzf --print-query \
-          --query="$default_repo" \
-          --bind='enter:accept' \
-          --bind='esc:abort' \
-          --no-sort \
-          --height=40% \
-          --border=rounded \
-          --prompt="  repo path: " \
-          --color='border:238,prompt:blue' \
-    | head -1) \
-    || { echo "aid: cancelled" >&2; exit 1; }
-  _repo="${_repo:-$default_repo}"
-  _repo="${_repo/#\~/$HOME}"
-
-  if [[ ! -d "$_repo" ]]; then
-    echo "aid: repo path '$_repo' does not exist" >&2
-    exit 1
-  fi
-
-  spawn_orc_session "$_name" "$_repo"
+  spawn_orc_session "$name" "$repo_path"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 _ensure_server
 
-# --new: skip to prompt (called from navigator 'n' key or re-exec inside popup).
+# --new: create a new orchestrator session from cwd (called from navigator 'n' key).
 if [[ "${1:-}" == "--new" ]]; then
-  _prompt_new_session
+  _new_session_from_cwd
   exit 0
 fi
 
@@ -318,8 +260,8 @@ _existing=$(tmux -L aid list-sessions \
   || true)
 
 if [[ -z "$_existing" ]]; then
-  # No orchestrator sessions yet — prompt to create the first one.
-  _prompt_new_session
+  # No orchestrator sessions yet — auto-create one from cwd.
+  _new_session_from_cwd
 else
   # Auto-attach to most recently used orchestrator session.
   _target=$(printf '%s\n' "$_existing" | head -1)
