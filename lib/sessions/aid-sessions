@@ -36,16 +36,89 @@ source "$AID_DIR/lib/sessions/aid-meta"
 # ── Debug logging ─────────────────────────────────────────────────────────────
 # Writes timestamped events to AID_DEBUG_LOG when set (i.e. aid -d was used).
 # Format: "<unix_ms> <CATEGORY> <message>"
-_dbg() {
+#
+# The logger runs as a setsid daemon — a separate process session entirely
+# outside the tmux pane's process group.  This means it keeps writing to the
+# log file even if the pane is killed (SIGHUP) or respawned mid-execution.
+# The main script sends lines to a named pipe; the daemon drains it to the file.
+#
+# Startup:
+#   _dbg_init   — called once at top of script; starts daemon and sets _DBG_PIPE
+# Runtime:
+#   _dbg CAT msg  — non-blocking write to the pipe (or direct file if no daemon)
+# Teardown:
+#   daemon exits automatically when the write end of the pipe is closed (EOF)
+
+_DBG_PIPE=""
+_DBG_DAEMON_PID=""
+
+_dbg_init() {
   [[ -z "${AID_DEBUG_LOG:-}" ]] && return 0
-  local cat="$1"; shift
-  local ms; ms=$(date +%s%3N 2>/dev/null || printf '%s000' "$(date +%s)")
-  printf '%s %s %s\n' "$ms" "$cat" "$*" >> "$AID_DEBUG_LOG"
+
+  _DBG_PIPE=$(mktemp -u /tmp/aid-dbg-XXXXXX)
+  mkfifo "$_DBG_PIPE"
+
+  # Launch the drain loop in a subshell that ignores SIGHUP so it survives
+  # pane respawn (respawn-pane -k sends SIGHUP to the pane process group).
+  # It is still a child process of this shell, so it dies when the tmux
+  # session is killed (SIGTERM/SIGKILL from kill-session reaches the group).
+  # SC2094: _DBG_PIPE is a named FIFO — reading and rm-ing it is not a
+  # simultaneous read/write to the same regular file.
+  # shellcheck disable=SC2094
+  (
+    trap '' HUP
+    while IFS= read -r _line; do
+      printf '%s\n' "$_line" >> "$AID_DEBUG_LOG"
+    done
+    # shellcheck disable=SC2094
+    rm -f "$_DBG_PIPE"
+  ) < "$_DBG_PIPE" &
+  _DBG_DAEMON_PID=$!
+
+  # Open the write end of the pipe in fd 9 so the shell holds it open.
+  exec 9>"$_DBG_PIPE"
 }
 
-# ── Mouse reset trap ──────────────────────────────────────────────────────────
-# Prevents terminal corruption when fzf exits abnormally.
-trap 'printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
+_dbg() {
+  [[ -z "${AID_DEBUG_LOG:-}" ]] && return 0
+  local _cat="$1"; shift
+  local _ms; _ms=$(date +%s%3N 2>/dev/null || printf '%s000' "$(date +%s)")
+  if [[ -n "$_DBG_PIPE" && -e "$_DBG_PIPE" ]]; then
+    # Non-blocking write to the daemon via fd 9.
+    printf '%s %-6s%s\n' "$_ms" "$_cat" "$*" >&9
+  else
+    # Fallback: direct write (daemon not running yet or pipe gone).
+    printf '%s %-6s%s\n' "$_ms" "$_cat" "$*" >> "$AID_DEBUG_LOG"
+  fi
+}
+
+_dbg_close() {
+  # Close the write end so the daemon sees EOF and exits cleanly.
+  exec 9>&- 2>/dev/null || true
+}
+
+# ── Mouse reset + logger teardown trap ───────────────────────────────────────
+trap '_dbg_close; printf "\033[?1000l\033[?1002l\033[?1006l"' EXIT
+
+# ERR trap: fires on any command that exits non-zero under set -e.
+# Writes the failing line number and last command to the log via the daemon
+# (or directly to the file if the daemon is gone) before the EXIT trap fires.
+# shellcheck disable=SC2154  # vars assigned inside the trap string
+trap '
+  _err_rc=$?
+  _err_line=${LINENO:-?}
+  _err_cmd=${BASH_COMMAND:-?}
+  _err_ms=$(date +%s%3N 2>/dev/null || printf "%s000" "$(date +%s)")
+  _err_msg="ERR   aid-sessions died: rc=${_err_rc} line=${_err_line} cmd=${_err_cmd}"
+  if [[ -n "${_DBG_PIPE:-}" && -e "${_DBG_PIPE:-}" ]]; then
+    printf "%s %s\n" "$_err_ms" "$_err_msg" >&9 2>/dev/null || true
+  elif [[ -n "${AID_DEBUG_LOG:-}" ]]; then
+    printf "%s %s\n" "$_err_ms" "$_err_msg" >> "$AID_DEBUG_LOG" 2>/dev/null || true
+  fi
+' ERR
+
+# ── Start the logger daemon ───────────────────────────────────────────────────
+_dbg_init
 
 # ── Caller client resolution ──────────────────────────────────────────────────
 # Used to target display-popup and switch-client to the correct terminal.
@@ -182,16 +255,20 @@ _load_conversation() {
   local orc_port
   orc_port=$(tmux -L aid show-environment -t "$tmux_session" AID_ORC_PORT 2>/dev/null \
     | cut -d= -f2- || true)
-  [[ -z "$orc_port" || "$orc_port" -le 0 ]] 2>/dev/null && return 0
-
-  _dbg CONV "load conv_id=${conv_id} session=${tmux_session} port=${orc_port}"
+  _dbg CONV "load conv_id=${conv_id} session=${tmux_session} port=${orc_port:-<none>}"
+  [[ -z "$orc_port" || "$orc_port" -le 0 ]] 2>/dev/null && {
+    _dbg CONV "load: no valid port for ${tmux_session}, aborting"
+    return 0
+  }
 
   # Store the active conversation ID in the session env.
-  tmux -L aid set-environment -t "$tmux_session" AID_ORC_ACTIVE_CONV "$conv_id"
+  _dbg CONV "set-environment AID_ORC_ACTIVE_CONV=${conv_id}"
+  tmux -L aid set-environment -t "$tmux_session" AID_ORC_ACTIVE_CONV "$conv_id" || {
+    _dbg CONV "set-environment failed (rc=$?), continuing"
+  }
 
   # Ask the live opencode TUI to switch to this session via HTTP API.
-  # This does NOT kill or respawn the opencode pane — it sends a signal through
-  # the running process, so the nav pane shell is unaffected.
+  _dbg CONV "curl POST /tui/select-session conv_id=${conv_id} port=${orc_port}"
   local _curl_rc=0
   curl -sf --max-time 3 \
     -X POST \
@@ -202,9 +279,20 @@ _load_conversation() {
   _dbg CONV "select-session curl rc=${_curl_rc} conv_id=${conv_id}"
 
   # If we're not already in that tmux session, switch to it.
+  _dbg CONV "checking current session vs target=${tmux_session}"
   local _cur
   _cur=$(tmux -L aid display-message -p "#{session_name}" 2>/dev/null || true)
-  [[ "$_cur" != "$tmux_session" ]] && _switch_to_session "$tmux_session"
+  _dbg CONV "current session=${_cur:-<none>} target=${tmux_session}"
+  if [[ "$_cur" != "$tmux_session" ]]; then
+    _dbg CONV "switching client to ${tmux_session}"
+    _switch_to_session "$tmux_session" || {
+      _dbg CONV "switch-client failed (rc=$?), continuing"
+    }
+    _dbg CONV "switch-client done"
+  else
+    _dbg CONV "already in target session, no switch needed"
+  fi
+  _dbg CONV "_load_conversation done"
 }
 
 _fzf_prompt() {
