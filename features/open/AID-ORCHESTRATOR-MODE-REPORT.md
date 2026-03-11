@@ -10,74 +10,46 @@
 
 ## The Core Premise: Sessions as First-Class Objects
 
-In `aid --fleet`, opencode instances are ephemeral workers — spawned for a task, merged, discarded. In `aid --mode orchestrator`, each opencode session is a **persistent, named, project-scoped environment** that maps 1:1 to a tmux session. The operator accumulates sessions over time (one per project, one per feature branch, one per experiment) and the layout makes all of them navigable from a single keybind.
+In `aid --fleet`, opencode instances are ephemeral workers — spawned for a task, merged, discarded. In `aid --mode orchestrator`, each opencode session is a **persistent, named, project-scoped environment** that maps 1:1 to a tmux session. The operator accumulates sessions over time (one per project, one per feature branch, one per experiment) and the layout makes all of them navigable from a single entry point.
 
-This is the T3/Codex workflow: parallel context windows, each fully live, with a session picker overlay to move between them.
+This is the T3/Codex workflow: parallel context windows, each fully live, with a session picker to move between them.
 
 ---
 
 ## The Three-Pane Layout
 
 ```
-┌─────────────────────────────────────────────┬──────────────────────┐
-│                                             │                      │
-│               opencode                      │      lazygit         │
-│           (active session)                  │    (diff review)     │
-│                                             │                      │
-│              ~75% width                     │     ~25% width       │
-│                                             │                      │
-└─────────────────────────────────────────────┴──────────────────────┘
+┌──────────────┬───────────────────────────────┬──────────────────────┐
+│ SESSIONS     │                               │                      │
+│              │      opencode                 │    diff reviewer     │
+│ > my-project │      (active session)         │    (see options)     │
+│   feature-a  │                               │                      │
+│   feature-b  │        ~50% width             │      ~25% width      │
+│              │                               │                      │
+│ other-proj   │                               │                      │
+│   main       │                               │                      │
+│              │                               │                      │
+│  ~25% width  │                               │                      │
+└──────────────┴───────────────────────────────┴──────────────────────┘
   [tmux tab: nvim]  ← separate tmux window, switch with prefix+n
-
-  prefix+s  →  session navigator popup overlay (see below)
 ```
 
 ### Pane Responsibilities
 
 | Pane | Content | Width |
 | :-- | :-- | :-- |
-| **Main** | Active opencode session | ~75% |
-| **Right** | lazygit, rooted to the active session's repo | ~25% |
+| **Left** | Session navigator — all `aid@*` sessions grouped with their opencode conversations | ~25% |
+| **Center** | Active opencode instance | ~50% |
+| **Right** | Diff reviewer (see options below) | ~25% |
 | **Tab: nvim** | Neovim + treemux sidebar, rooted to the repo | full |
-| **prefix+s** | Session navigator popup — all aid sessions + opencode conversations | overlay |
 
 ---
 
-## Session Model: One tmux Session Per Project
+## The Left Pane: Session Navigator
 
-Each project launched under `aid --mode orchestrator` gets its own **tmux session** named:
+The left pane runs `aid-sessions` — a persistent fzf-based navigator. It shows all `aid@*` orchestrator sessions as collapsible folder headers, with each session's opencode conversations listed as children.
 
-```
-aid@<name>
-```
-
-where `<name>` is the sanitised basename of the repo directory (same derivation as regular `aid` sessions). A numeric suffix is appended for collisions: `aid@my-project`, `aid@my-project2`.
-
-Sessions are tagged with `@aid_mode=orchestrator` at creation so they can be distinguished from plain `aid` sessions sharing the same tmux server.
-
-### What lives inside each `aid@<name>` session
-
-- **Window 0**: opencode (main pane, ~75%) + lazygit (right, ~25%)
-- **Window 1 (`nvim`)**: full-width nvim + treemux sidebar
-- **Session env vars**: `AID_ORC_NAME`, `AID_ORC_REPO`, `AID_ORC_PORT` (opencode HTTP port)
-
-### opencode HTTP server
-
-Each opencode instance is started with a **fixed, deterministic port**:
-
-```
-port = 4200 + (cksum(name) % 1000)
-```
-
-This port is stored in `AID_ORC_PORT` in the tmux session environment and used by the navigator to communicate with that session's opencode instance via its HTTP API.
-
----
-
-## The Session Navigator: prefix+s Popup
-
-The navigator is a **tmux popup overlay** bound to `prefix+s`. It opens on top of any session, lets the operator pick a session or conversation, then closes. No persistent left pane — the popup approach is simpler, more reliable, and avoids all `switch-client` visibility problems.
-
-### What the navigator shows
+### Display format
 
 ```
 aid@my-project  [live]  /home/user/my-project  (feature/auth)
@@ -90,34 +62,85 @@ aid@other-proj  [live]  /home/user/other
 aid@old-work    [dead]                  5d ago
 ```
 
-- **Session headers** (`aid@<name>`) — selectable: switches tmux client to that session
-- **Conversations** — opencode conversations from that session's HTTP API, grouped under their session, sorted by last updated. Selecting one calls `POST /tui/select-session` on that session's opencode port — instant, no restart.
-- **Dead sessions** — sessions in metadata but not in tmux. Selectable: resurrects the layout.
+- **Session headers** — selectable: switches tmux client to that session
+- **Conversations** — opencode conversations for that session's repo, sorted by last updated. Selecting one switches the conversation in the center pane's opencode instance via `POST /tui/select-session` — instant, no process restart.
+- **Dead sessions** — in metadata but not in tmux. Selectable: resurrects the layout.
 
 ### Navigation keys
 
 | Key | Action |
 | :-- | :-- |
-| `Enter` | Switch to session / load conversation |
-| `n` | New session (auto-named from cwd basename) |
+| `Enter` | Switch to session / load conversation in center pane |
+| `n` | New session (auto-named from cwd basename, no prompts) |
 | `d` | Delete session with confirmation |
 | `r` | Rename session |
 | `z` | Toggle collapse/expand session group |
 | `ctrl-r` | Refresh list |
 | `q` / `esc` | Close navigator |
 
+### The persistent left pane problem
+
+The left pane must remain visible when the user switches between `aid@*` sessions. Since each tmux session has its own window set, a pane in session A disappears when `switch-client` moves the terminal to session B.
+
+**Chosen solution: left pane lives in every session.** Each `aid@<name>` session spawns its own `aid-sessions` navigator in the left pane. When the user switches sessions, the new session's left pane also shows the full session tree. The navigator always reflects the global picture — all `aid@*` sessions and their conversations — regardless of which session you are currently in.
+
+**Rejected alternative: `prefix+s` popup.** A popup overlay was implemented and works, but is inferior: you cannot see the session list while reading opencode output. The persistent left pane provides the spatial continuity that is the whole point of the T3/Codex layout.
+
+---
+
+## The Right Pane: Diff Reviewer
+
+The right pane shows a diff/code review tool rooted to the active session's repo. **lazygit is the current placeholder** but is likely to be replaced — it does not integrate well as a passive diff viewer in a fixed right pane (it is an interactive git client that expects full focus).
+
+### Options
+
+| Tool | Pros | Cons |
+| :-- | :-- | :-- |
+| **lazygit** | Already a dependency, familiar | Designed for full-screen interactive use; awkward in 25% pane |
+| **`git diff` + auto-refresh** | Zero deps, always current | No interactivity, no staging |
+| **`watch git diff --stat`** | Live summary of changes | No inline diff content |
+| **`tig`** | TUI git browser, works well in narrow panes | Separate dependency |
+| **`delta` pager** | Beautiful diffs, syntax highlighted | Not interactive, needs piping |
+| **custom `git diff --color` loop** | Fully controlled, no extra deps | Requires implementation |
+
+**Recommendation:** `tig` in browse mode (`tig status`) is the best fit — it works well in narrow panes, is keyboard-navigable without needing full focus, and shows both status and inline diffs. It is a single binary available in all major distros.
+
+**Fallback:** a `watch -n2 git -C <repo> diff --stat` pane costs nothing and gives a live summary of changed files without any dependency.
+
+The right pane is a deferred concern — the opencode center pane and left navigator are the critical path.
+
+---
+
+## Session Model
+
+Each project launched under `aid --mode orchestrator` gets its own **tmux session** named:
+
+```
+aid@<name>
+```
+
+where `<name>` is the sanitised basename of the repo directory (same derivation as regular `aid` sessions). A numeric suffix is appended on collision: `aid@my-project`, `aid@my-project2`.
+
+Sessions are tagged `@aid_mode=orchestrator` in the tmux session options at creation, so they are never confused with plain `aid` sessions sharing the same server.
+
+### What lives inside each `aid@<name>` session
+
+- **Window 0**: navigator (left, ~25%) + opencode (center, ~50%) + diff reviewer (right, ~25%)
+- **Window 1 (`nvim`)**: full-width nvim + treemux sidebar
+- **Session env vars**: `AID_ORC_NAME`, `AID_ORC_REPO`, `AID_ORC_PORT` (opencode HTTP port)
+
 ---
 
 ## opencode HTTP API Integration
 
-opencode exposes a full HTTP API when running with `--port`. This is the correct integration point — not DB queries, not tmux send-keys, not process restarts.
+opencode exposes a full HTTP API when started with `--port`. This is the correct integration point for the navigator — not DB queries, not `tmux send-keys`, not process restarts.
 
-### Key endpoints used by the navigator
+### Key endpoints
 
 | Method | Endpoint | Purpose |
 | :-- | :-- | :-- |
 | `GET` | `/session` | List all conversations for this opencode instance |
-| `POST` | `/tui/select-session` | Switch the running TUI to a specific conversation |
+| `POST` | `/tui/select-session` | Switch the running TUI to a specific conversation (instant) |
 | `POST` | `/tui/open-sessions` | Open opencode's own session picker dialog |
 
 ### Conversation switching (no restart)
@@ -129,24 +152,28 @@ curl -s -X POST \
   "http://localhost:${AID_ORC_PORT}/tui/select-session"
 ```
 
-Returns `true` on success. The opencode TUI switches instantly — no kill, no respawn, no lost state.
+Returns `true`. The opencode TUI switches instantly — no kill, no respawn, scroll position and in-progress generation preserved.
 
-### Session listing
+### Session listing (filtered by repo)
 
 ```bash
 curl -s -H "Accept: application/json" \
   "http://localhost:${AID_ORC_PORT}/session"
 ```
 
-Returns JSON array with `id`, `title`, `directory`, `time.updated`. Filter by `directory == repo_path` to show only conversations relevant to this session's project.
+Returns a JSON array with `id`, `title`, `directory`, `time.updated`. The navigator filters by `directory == repo_path` to show only conversations for this session's project.
 
-### Port derivation
+### Port assignment
+
+Each session gets a **deterministic fixed port** derived from the session name:
 
 ```bash
 orc_port=$(( 4200 + $(printf '%s' "$name" | cksum | cut -d' ' -f1) % 1000 ))
 ```
 
-Deterministic and stable across restarts — no port discovery needed.
+Range: 4200–5199. Stable across restarts — no port discovery or coordination needed. Port stored in `AID_ORC_PORT` tmux session env.
+
+**Note:** Direct SQLite/DB queries were attempted first and rejected. The DB path varies by `OPENCODE_CONFIG_DIR`, there is no live session status available, and switching conversations required killing the opencode process (losing scroll position and any active generation). The HTTP API is opencode's own public interface and the correct layer to use.
 
 ---
 
@@ -159,13 +186,13 @@ aid --mode orchestrator
 1. Ensure the aid tmux server is running.
 2. Find existing sessions tagged `@aid_mode=orchestrator`, sorted by `session_last_attached`.
 3. **If sessions exist**: auto-attach to the most recently used one.
-4. **If no sessions exist**: auto-create one from `$PWD` (name = sanitised `basename $PWD`).
+4. **If no sessions exist**: auto-create one from `$PWD` (name = sanitised `basename $PWD`), spawn the 3-pane layout, attach.
 
-No picker gate on launch — the operator lands directly in their last context.
+No picker gate on launch — the operator lands directly in their last context. The session navigator in the left pane is already visible and shows everything.
 
 ### Creating additional sessions
 
-From within any session, `prefix+s` → `n`. A new `aid@<basename_of_cwd>` session is created and the operator is switched to it immediately.
+From within any session, press `n` in the left pane navigator. A new `aid@<basename_of_cwd>` session is spawned and the operator is switched to it.
 
 ---
 
@@ -187,7 +214,7 @@ From within any session, `prefix+s` → `n`. A new `aid@<basename_of_cwd>` sessi
 
 Used for:
 - Showing repo path and branch in the navigator
-- Dead session resurrection (repo_path needed to respawn layout)
+- Dead session resurrection (`repo_path` needed to respawn the layout)
 - Last-active timestamps in the navigator display
 
 ---
@@ -201,8 +228,8 @@ Used for:
 | **Parallelism** | All sessions alive; human moves focus | Workers execute concurrently on decomposed sub-tasks |
 | **Task decomposition** | Human decides (manual per-session context) | `/fleet-plan` writes `tasks.md` automatically |
 | **Git isolation** | Optional — each session can be on its own branch | Required — each worker in a dedicated git worktree |
-| **Merge workflow** | Standard git / lazygit | `/fleet-merge` supervised AI merge |
-| **Layout** | 2-pane (opencode + lazygit) + nvim tab + popup navigator | Half/half (opencode + status/diff supervisor) |
+| **Merge workflow** | Standard git / diff reviewer | `/fleet-merge` supervised AI merge |
+| **Layout** | 3-pane (navigator + opencode + diff) + nvim tab | Half/half (opencode + status/diff supervisor) |
 | **Entry point** | `aid --mode orchestrator` | `aid --fleet` |
 | **Best for** | Multi-project juggling, long-running sessions, T3/Codex-style context switching | Single-project parallel task execution with LLM decomposition |
 
@@ -214,9 +241,9 @@ These two modes are **complementary**. The orchestrator mode is the daily driver
 
 | T3/Codex element | `aid --mode orchestrator` equivalent |
 | :-- | :-- |
-| Session/context list | `prefix+s` popup navigator |
-| Coding agent | opencode in main pane |
-| Diff review | lazygit in right pane |
+| Session/context list | Left pane navigator (persistent, fzf) |
+| Coding agent | opencode in center pane |
+| Diff review | Right pane diff reviewer (tig / lazygit / custom) |
 | Switch to editor | `prefix+n` → nvim tab |
 
 The key advantage over GUI-based equivalents (Codex Desktop, Cursor multi-session) is that this layout runs entirely in the terminal — over SSH, in tmux, survives disconnects, and requires no GUI.
@@ -226,42 +253,13 @@ The key advantage over GUI-based equivalents (Codex Desktop, Cursor multi-sessio
 ## What `aid` Is Responsible For
 
 1. **Bootstrap** the aid tmux server with correct config
-2. **Spawn** new sessions on demand: opencode (`--port`) + lazygit + nvim tab
-3. **Name** tmux sessions using `aid@<name>` convention, tag with `@aid_mode=orchestrator`
+2. **Spawn** new sessions on demand: navigator (left) + opencode with `--port` (center) + diff reviewer (right) + nvim tab
+3. **Name** tmux sessions `aid@<name>`, tag with `@aid_mode=orchestrator`
 4. **Store** `AID_ORC_PORT` in session env for navigator → opencode HTTP communication
 5. **Maintain** `sessions.json` for metadata persistence and dead session resurrection
-6. **Provide** `aid-sessions` navigator script (fzf popup, `prefix+s`)
+6. **Provide** `aid-sessions` navigator (fzf, persistent left pane)
 
-Everything else — what opencode does, what lazygit shows, what nvim edits — is outside `aid`'s responsibility.
-
----
-
-## Implementation Notes
-
-### Why popup, not persistent left pane
-
-A persistent left pane in every session was attempted. The problems:
-- After `tmux switch-client`, you are in a different session — the left pane of the previous session is no longer visible
-- Linking windows across sessions is fragile and complex
-- A fzf process running in a persistent pane with `exec` re-runs creates hard-to-debug restart loops
-
-The popup approach (`prefix+s`) is strictly better: one keybind, works from any session or window, closes automatically after selection, zero persistent state to manage.
-
-### Why opencode HTTP API, not DB queries
-
-Direct SQLite/DB queries were attempted first. Problems:
-- The DB path varies by `OPENCODE_CONFIG_DIR` and is not always at a predictable location
-- No live session status (whether opencode is actively processing)
-- Switching conversations required killing and restarting the opencode process — losing scroll position and any in-progress generation
-
-The HTTP API (`GET /session`, `POST /tui/select-session`) is the correct integration point:
-- Instant conversation switching with no process restart
-- Returns live session metadata
-- Stable — it's opencode's own public interface
-
-### Port collision handling
-
-The `cksum`-based port derivation gives deterministic ports in range 4200–5199. In the unlikely event of a collision between two sessions, opencode will fail to bind and print an error. A future improvement could detect this and pick the next free port.
+Everything else — what opencode does, what the diff tool shows, what nvim edits — is outside `aid`'s responsibility.
 
 ---
 
@@ -269,6 +267,6 @@ The `cksum`-based port derivation gives deterministic ports in range 4200–5199
 
 - **T3/Codex in the terminal** — the only terminal-native layout that directly replicates the session-list + agent + diff-review spatial workflow, with full SSH compatibility
 - **True parallel sessions** — all sessions remain alive; background opencode instances continue running while you work in another session
-- **opencode HTTP API** — conversation switching is instant via `POST /tui/select-session`, no process restarts
+- **opencode HTTP API** — conversation switching is instant via `POST /tui/select-session`, no process restarts, no lost state
 - **Zero GUI dependency** — runs over any SSH connection, survives disconnects, works in any terminal
 - **Composable with `--fleet`** — orchestrator mode is the daily driver; fleet mode is invocable from within any orchestrator session when a task warrants parallel sub-agents
