@@ -178,8 +178,12 @@ _write_session_metadata() {
 }
 
 # _attach_or_switch <session>
+# Use switch-client when the current terminal is a client of the aid server
+# (avoids calling switch-client from a different tmux server or plain terminal).
 _attach_or_switch() {
-  if [[ -n "${TMUX:-}" ]]; then
+  local _sock
+  _sock=$(printf '%s' "${TMUX:-}" | cut -d',' -f1)
+  if [[ -n "${TMUX:-}" && "$(basename "$_sock")" == "aid" ]]; then
     tmux -L aid switch-client -t "$1"
   else
     tmux -L aid attach -t "$1"
@@ -255,13 +259,21 @@ else
   # Sessions already exist — open the navigator so the user can pick one or
   # create a new one.
   dbg "existing sessions found, opening navigator"
+  # Use display-popup only when the current terminal is a client of the aid
+  # server itself.  $TMUX is set both inside the aid server and inside any
+  # other tmux server, so we must check the socket name explicitly.
+  _in_aid_server=0
   if [[ -n "${TMUX:-}" ]]; then
-    # Already inside tmux: open the navigator as a popup overlay.
+    _tmux_sock=$(printf '%s' "${TMUX}" | cut -d',' -f1)
+    [[ "$(basename "$_tmux_sock")" == "aid" ]] && _in_aid_server=1
+  fi
+  if [[ "$_in_aid_server" -eq 1 ]]; then
+    # Already inside the aid server: open the navigator as a popup overlay.
     tmux -L aid display-popup -E -w 70% -h 60% \
       "AID_DIR=$(printf '%q' "$AID_DIR") $(printf '%q' "$AID_DIR")/lib/sessions/aid-sessions"
   else
-    # Outside tmux: run the session navigator interactively in the terminal so
-    # the user can pick a session or create a new one — same UX as the popup.
+    # Outside the aid server (plain terminal or a different tmux server): run
+    # the session navigator directly so the user can pick or create a session.
     "$AID_DIR/lib/sessions/aid-sessions"
   fi
 fi
