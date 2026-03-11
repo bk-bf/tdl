@@ -258,8 +258,21 @@ _fzf_prompt() {
 }
 
 _prompt_new_session() {
-  # If we're not already inside the popup, open one and re-exec --new inside it.
-  # Use -c only when AID_CALLER_CLIENT is a connected aid server client.
+  # Determine if we're inside the aid tmux server.
+  local _in_aid=0
+  if [[ -n "${TMUX:-}" ]]; then
+    local _s; _s=$(printf '%s' "${TMUX}" | cut -d',' -f1)
+    [[ "$(basename "$_s")" == "aid" ]] && _in_aid=1
+  fi
+
+  # Outside the aid server we already have a real tty — run prompts directly.
+  # Inside the server (e.g. prefix+s → --new) we need a popup for a tty.
+  if [[ "$_in_aid" -eq 0 ]]; then
+    # Inline: jump straight to the prompt body (set sentinel so spawn works).
+    AID_IN_NEW_POPUP=1
+  fi
+
+  # If we're not already inside the popup (and inside the server), open one.
   if [[ "${AID_IN_NEW_POPUP:-0}" -ne 1 ]]; then
     local _c _c_flag=()
     _c=$(_aid_client_tty)
