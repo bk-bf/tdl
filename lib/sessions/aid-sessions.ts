@@ -333,18 +333,24 @@ async function orcDeleteConversation(port: number, convId: string): Promise<void
 /**
  * Resolve the tmux client tty to use with switch-client -c.
  * Prefers AID_CALLER_CLIENT (set by orchestrator.sh when available).
- * Falls back to querying which client is currently attached to our session —
- * necessary when the nav process was spawned via respawn-pane and stdin is
- * not a tty, so AID_CALLER_CLIENT is empty.
+ * Falls back to listing all clients on the server and taking the most
+ * recently active one — necessary when the nav process was spawned via
+ * respawn-pane (stdin is not a tty) so AID_CALLER_CLIENT is empty, and
+ * the user's terminal may be attached to a *different* session than the
+ * one this nav pane lives in.
  */
 async function resolveClient(): Promise<string> {
   if (AID_CALLER_CLIENT) return AID_CALLER_CLIENT;
-  if (!TMUX_PANE) return "";
-  const curSession = await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}").catch(() => "");
-  if (!curSession) return "";
-  // list-clients prints one line per client: "<tty> <session>"
-  const raw = await tmuxOutput("list-clients", "-t", curSession, "-F", "#{client_name}").catch(() => "");
-  return raw.trim().split("\n")[0]?.trim() ?? "";
+  // Sort by activity descending so the most recently used client is first.
+  const raw = await tmuxOutput(
+    "list-clients", "-F", "#{client_activity} #{client_name}",
+  ).catch(() => "");
+  const client = raw.trim().split("\n")
+    .map((l) => l.trim().split(/\s+/))
+    .filter((p) => p.length >= 2)
+    .sort((a, b) => Number(b[0]) - Number(a[0]))[0]?.[1] ?? "";
+  dbg("CLIENT", `resolved client: ${client || "<none>"}`);
+  return client;
 }
 
 /**
