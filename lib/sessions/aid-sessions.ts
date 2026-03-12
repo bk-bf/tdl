@@ -242,7 +242,7 @@ async function orcPort(session: string): Promise<number> {
   return computePort(session);
 }
 
-async function orcConversations(port: number, tmuxSession: string): Promise<OrcConversation[]> {
+async function orcConversations(port: number, tmuxSession: string, filter: boolean): Promise<OrcConversation[]> {
   if (port) {
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/session`, {
@@ -251,9 +251,11 @@ async function orcConversations(port: number, tmuxSession: string): Promise<OrcC
       });
       if (resp.ok) {
         const all = (await resp.json()) as OrcConversation[];
-        // Tag unowned convs in the DB (first-writer-wins, never overwrites).
-        // Claim any unowned convs for this session (INSERT OR IGNORE = first-writer-wins).
+        // Always tag — ownership must be recorded regardless of filter state.
         tagConvsInDb(all.map((c) => c.id), tmuxSession);
+        if (!filter) {
+          return all.sort((a, b) => b.time.updated - a.time.updated);
+        }
         // Read back ownership and keep only ours.
         const owners = readConvOwners(all.map((c) => c.id));
         const owned = all.filter((c) => owners.get(c.id) === tmuxSession);
@@ -264,6 +266,7 @@ async function orcConversations(port: number, tmuxSession: string): Promise<OrcC
     } catch { /* fall through to DB */ }
   }
   // Port offline — look up owned IDs from sidecar, fetch details from opencode DB.
+  // When filter is off, we can't enumerate all convs offline (no port), so fall back to owned only.
   return convosFromDbForSession(tmuxSession);
 }
 
@@ -549,7 +552,7 @@ async function buildList(): Promise<ListItem[]> {
         orcPort(session),
         orcActiveConv(session),
       ]);
-      const convs = await orcConversations(port, session);
+      const convs = await orcConversations(port, session, state.filterBySession);
       return { session, port, convs, activeConvId };
     }),
   );
@@ -862,6 +865,8 @@ interface AppState {
   mode: Mode;
   refreshing: boolean;
   statusMsg: string;
+  /** When true (default), each session only shows convs it owns. Toggle with 'f'. */
+  filterBySession: boolean;
   /** Maps foreign tmux session name → overlay pane ID (%NNN) in the current window. */
   overlayPanes: Map<string, string>;
   /** The pane ID currently occupying the "front" (large) opencode slot. */
@@ -874,6 +879,7 @@ const state: AppState = {
   mode: { type: "loading" },
   refreshing: false,
   statusMsg: "",
+  filterBySession: true,
   overlayPanes: new Map(),
   frontPane: "",
 };
@@ -901,10 +907,12 @@ function buildFrame(): string[] {
   // rightAlign() only inserts plain spaces (no escape codes) so we can't use
   // it here — the gap would revert to terminal default background.
   const titleLeftStr  = ` aid@${AID_ORC_NAME || "aid"}`;
+  const filterTag     = state.filterBySession ? "" : ` ${A.reset}${A.bgTitleBar}${A.fgYellow}[all]`;
   const titleRightStr = " sessions ";
-  const titleGap = Math.max(1, cols - titleLeftStr.length - titleRightStr.length);
+  const filterTagLen  = state.filterBySession ? 0 : 6; // " [all]" = 6 visible chars
+  const titleGap = Math.max(1, cols - titleLeftStr.length - filterTagLen - titleRightStr.length);
   const titleBar =
-    `${A.bgTitleBar}${A.fgWhite}${A.bold}${titleLeftStr}` +
+    `${A.bgTitleBar}${A.fgWhite}${A.bold}${titleLeftStr}${filterTag}` +
     `${A.reset}${A.bgTitleBar}${" ".repeat(titleGap)}` +
     `${A.dim}${A.fgMatch}${titleRightStr}${A.reset}`;
   lines.push(titleBar);
@@ -1028,6 +1036,7 @@ function buildFooter(mode: Mode, _cols: number): string {
         `${k("n")} new${sep}` +
         `${k("r")} rename${sep}` +
         `${k("d")} delete${sep}` +
+        `${k("f")} filter${sep}` +
         `${k("^r")} refresh${sep}` +
         `${k("q")} quit` +
         A.reset
@@ -1286,7 +1295,7 @@ async function doDelete(item: ListItem): Promise<void> {
       const port = await orcPort(session);
       if (port) {
         const m = metaFor(session);
-        const convs = await orcConversations(port, m?.repo_path ?? "");
+        const convs = await orcConversations(port, m?.repo_path ?? "", true);
         for (const c of convs) await orcDeleteConversation(port, c.id);
       }
       break;
@@ -1503,6 +1512,14 @@ function handleNavKey(key: Buffer): void {
 
   // d — delete (inline confirm)
   if (ch === "d") { startDelete(); return; }
+
+  // f — toggle per-session filter
+  if (ch === "f") {
+    state.filterBySession = !state.filterBySession;
+    setStatus(state.filterBySession ? "filter: on" : "filter: off (showing all)");
+    refresh();
+    return;
+  }
 
   // Ctrl-R — force full refresh
   if (key[0] === 0x12) { dbg("KEY", "ctrl-r"); refresh(); return; }
