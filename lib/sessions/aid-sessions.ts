@@ -311,13 +311,16 @@ async function buildList(): Promise<ListItem[]> {
   const sessionData: SessionData[] = await Promise.all(
     liveSessions.map(async (session): Promise<SessionData> => {
       const m = metaFor(session);
-      const [port, activeConvId, orcRepoRaw] = await Promise.all([
+      const [port, activeConvId, orcRepoRaw, paneCwd] = await Promise.all([
         orcPort(session),
         orcActiveConv(session),
         tmuxOutput("show-environment", "-t", session, "AID_ORC_REPO"),
+        tmuxOutput("display-message", "-t", session, "-p", "#{pane_current_path}"),
       ]);
       const orcRepoMatch = orcRepoRaw.match(/AID_ORC_REPO=(.+)/);
-      const repo = orcRepoMatch ? orcRepoMatch[1].trim() : (m?.repo_path ?? "");
+      const repo = orcRepoMatch
+        ? orcRepoMatch[1].trim()
+        : (m?.repo_path ?? paneCwd ?? "");
       const convs = await orcConversations(port, repo);
       return { session, port, convs, activeConvId };
     }),
