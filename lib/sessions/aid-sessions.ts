@@ -218,7 +218,7 @@ function convosFromDbForSession(tmuxSession: string): OrcConversation[] {
 }
 
 
-type ConvStatus = "idle" | "busy" | "retry";
+type ConvStatus = "idle" | "busy" | "retry" | "waiting";
 
 interface OrcConversation {
   id: string;
@@ -369,6 +369,138 @@ async function orcSessionStatuses(port: number): Promise<Map<string, ConvStatus>
   } catch {
     return new Map();
   }
+}
+
+// ── SSE waiting-state overlay ─────────────────────────────────────────────────
+//
+// The /session/status poll cannot distinguish "busy and waiting for user input"
+// from "busy and actively running" — the session stays "busy" in both cases.
+// We subscribe to GET /event (SSE) per port and track:
+//   permission.asked / question.asked  → mark convId as "waiting"
+//   permission.replied / question.replied / question.rejected → clear it
+//   session.idle / session.status{idle} → clear it (safety net)
+//
+// waitingConvs is the overlay: if a convId is present here it overrides the
+// polled ConvStatus with "waiting" regardless of what the poll returned.
+
+/** convId → true when that conv is blocked waiting for user input. */
+const waitingConvs = new Map<string, true>();
+
+/** port → AbortController for the SSE connection to that port. */
+const sseControllers = new Map<number, AbortController>();
+
+function applyWaitingOverlay(statuses: Map<string, ConvStatus>): void {
+  for (const convId of waitingConvs.keys()) {
+    statuses.set(convId, "waiting");
+  }
+}
+
+function clearWaiting(convId: string): void {
+  if (waitingConvs.delete(convId)) render();
+}
+
+function setWaiting(convId: string): void {
+  if (!waitingConvs.has(convId)) {
+    waitingConvs.set(convId, true);
+    // Patch in-place so the UI updates immediately without a full refresh
+    for (const item of state.items) {
+      if (item.kind.type === "conv" && item.kind.convId === convId) {
+        item.kind.status = "waiting";
+      }
+    }
+    render();
+  }
+}
+
+/**
+ * Subscribe to the SSE event stream for a given port.
+ * Safe to call multiple times for the same port — returns immediately if already
+ * connected.  Automatically reconnects after a 3 s delay on connection drop.
+ */
+function subscribeToPort(port: number): void {
+  if (!port || sseControllers.has(port)) return;
+
+  const ac = new AbortController();
+  sseControllers.set(port, ac);
+
+  async function connect(): Promise<void> {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/event`, {
+        headers: { Accept: "text/event-stream" },
+        signal: ac.signal,
+      });
+      if (!resp.ok || !resp.body) return;
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by double newline
+        const frames = buf.split(/\n\n/);
+        buf = frames.pop() ?? "";
+
+        for (const frame of frames) {
+          const dataLine = frame.split("\n").find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          try {
+            const ev = JSON.parse(dataLine.slice(5).trim()) as { type: string; properties?: Record<string, unknown> };
+            const p = ev.properties ?? {};
+            const convId = (p.sessionID ?? p.id ?? "") as string;
+
+            switch (ev.type) {
+              case "permission.asked":
+              case "question.asked":
+                if (convId) {
+                  dbg("SSE", `${ev.type} convId=${convId}`);
+                  setWaiting(convId);
+                }
+                break;
+
+              case "permission.replied":
+              case "question.replied":
+              case "question.rejected":
+              case "session.idle":
+                if (convId) {
+                  dbg("SSE", `${ev.type} convId=${convId} — clear waiting`);
+                  clearWaiting(convId);
+                }
+                break;
+
+              case "session.status": {
+                const status = (p.status as { type?: string } | undefined)?.type;
+                if (convId && status === "idle") {
+                  clearWaiting(convId);
+                }
+                break;
+              }
+            }
+          } catch { /* malformed JSON — ignore */ }
+        }
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === "AbortError") return; // intentional close
+      dbg("SSE", `port=${port} disconnected: ${e} — reconnecting in 3s`);
+    }
+
+    // Reconnect after 3 s unless aborted
+    if (!ac.signal.aborted) {
+      await new Promise<void>((res) => setTimeout(res, 3000));
+      if (!ac.signal.aborted) connect().catch(() => {});
+    }
+  }
+
+  connect().catch(() => {});
+}
+
+/** Tear down all SSE connections. Called from cleanup(). */
+function closeSseConnections(): void {
+  for (const ac of sseControllers.values()) ac.abort();
+  sseControllers.clear();
 }
 
 /**
@@ -612,6 +744,8 @@ async function buildList(): Promise<ListItem[]> {
         orcConversations(port, session, state.filterBySession),
         orcSessionStatuses(port),
       ]);
+      applyWaitingOverlay(statuses);
+      subscribeToPort(port);
       return { session, port, convs, activeConvId, statuses };
     }),
   );
@@ -967,9 +1101,10 @@ function renderItem(
             ? ` `
             : `${A.fgLavender}│${rfg}`;
           const statusLabel =
-            status === "busy"  ? `${A.fgAmber}• Working${rfg}` :
-            status === "retry" ? `${A.fgRed}↺ Retry${rfg}`    :
-            /* idle */           `${A.fgGray}${A.dim}· idle${rfg}`;
+            status === "busy"    ? `${A.fgAmber}• Working${rfg}`           :
+            status === "retry"   ? `${A.fgRed}↺ Retry${rfg}`               :
+            status === "waiting" ? `${A.fgPurple}? Waiting${rfg}`          :
+            /* idle */             `${A.fgGray}${A.dim}· idle${rfg}`;
           // Align under arrow+marker: selBar(1) + sp(1) + contChar(1) + "  "(2) + contChar2(1) + "  "(2) = 8 chars
           const line2 = padLine(`${selBg}${selBar} ${subContChar}    ${subContChar2}   ${A.dim}${statusLabel}${rfg}`);
           return [line1, line2];
@@ -1004,9 +1139,10 @@ function renderItem(
           ? ` `                                 // last conv — no continuation bar
           : `${A.fgLavender}│${rfg}`;           // more convs below — vertical bar
         const statusLabel =
-          status === "busy"  ? `${A.fgAmber}• Working${rfg}` :
-          status === "retry" ? `${A.fgRed}↺ Retry${rfg}`    :
-          /* idle */           `${A.fgGray}${A.dim}· idle${rfg}`;
+          status === "busy"    ? `${A.fgAmber}• Working${rfg}`           :
+          status === "retry"   ? `${A.fgRed}↺ Retry${rfg}`               :
+          status === "waiting" ? `${A.fgPurple}? Waiting${rfg}`          :
+          /* idle */             `${A.fgGray}${A.dim}· idle${rfg}`;
         // 5-char indent mirrors: selBar(1) + sp(1) + treeChar(2) + sp(1)
         const line2 = padLine(`${selBg}${selBar} ${contChar}    ${A.dim}${statusLabel}${rfg}`);
         return [line1, line2];
@@ -1831,6 +1967,7 @@ function handleKey(key: Buffer): void {
 function cleanup(): void {
   if (refreshTimer) clearInterval(refreshTimer);
   if (statusClearTimer) clearTimeout(statusClearTimer);
+  closeSseConnections();
   // Leave alternate screen buffer, restore cursor and terminal state
   try { process.stdout.write(A.altScreenOff + A.showCursor + A.reset); } catch { /* EIO — tty gone */ }
   try { process.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1006l"); } catch { /* ignore */ }
