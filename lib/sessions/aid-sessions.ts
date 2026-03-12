@@ -854,8 +854,29 @@ async function newConversation(): Promise<void> {
   const port = await orcPort(targetSession);
   if (!port) { setStatus(`no opencode port for ${targetSession}`); return; }
 
+  // Optimistic: insert a placeholder conv at the top of this session's group
+  const placeholderId = "__placeholder__";
+  const placeholder: ListItem = {
+    kind: { type: "conv", convId: placeholderId, session: targetSession, title: "new conversation…", age: "now", active: false },
+    selectable: false,
+  };
+  // Insert after the session header (first item for this session), before existing convs
+  const insertIdx = state.items.findIndex(
+    (i) => i.kind.type === "session" && i.kind.session === targetSession,
+  );
+  if (insertIdx >= 0) {
+    state.items.splice(insertIdx + 1, 0, placeholder);
+  } else {
+    state.items.unshift(placeholder);
+  }
+  render();
+
   const newId = await orcNewConversation(port);
-  if (!newId) { setStatus("failed to create conversation"); return; }
+
+  // Remove placeholder regardless of outcome
+  state.items = state.items.filter((i) => !(i.kind.type === "conv" && i.kind.convId === placeholderId));
+
+  if (!newId) { setStatus("failed to create conversation"); render(); return; }
 
   dbg("ACTN", `new conv created id=${newId}`);
   await orcSelectConversation(port, newId);
@@ -870,9 +891,16 @@ async function doRename(
     const title = rawInput.trim();
     if (!title) return;
     dbg("RENAME", `conv ${target.convId} -> "${title}"`);
+    // Optimistic: patch the title in state immediately
+    for (const item of state.items) {
+      if (item.kind.type === "conv" && item.kind.convId === target.convId) {
+        item.kind.title = title.length > 48 ? title.slice(0, 47) + "…" : title;
+      }
+    }
+    render();
     const port = await orcPort(target.session);
     const ok = await orcRenameConversation(port, target.convId, title);
-    if (!ok) { setStatus("rename failed"); return; }
+    if (!ok) { setStatus("rename failed"); await refresh(); return; }
     dbg("RENAME", "conv rename done");
     await refresh();
     return;
@@ -906,6 +934,40 @@ async function doRename(
 }
 
 async function doDelete(item: ListItem): Promise<void> {
+  // Optimistic removal — strip the item (and any orphaned sep/empty) from
+  // state immediately so the UI updates before the HTTP/tmux calls complete.
+  switch (item.kind.type) {
+    case "conv": {
+      const { convId } = item.kind;
+      state.items = state.items.filter((i) => !(i.kind.type === "conv" && i.kind.convId === convId));
+      // If the session group is now empty, insert an empty placeholder
+      // (the full refresh will fix it properly; this is just visual)
+      break;
+    }
+    case "session": {
+      const { session } = item.kind;
+      state.items = state.items.filter((i) => {
+        if (i.kind.type === "session" && i.kind.session === session) return false;
+        if (i.kind.type === "conv"    && i.kind.session === session) return false;
+        return true;
+      });
+      break;
+    }
+    case "dead": {
+      const { session } = item.kind;
+      state.items = state.items.filter((i) => !(i.kind.type === "dead" && i.kind.session === session));
+      break;
+    }
+  }
+  // Drop any leading/trailing sep rows left stranded after the removal
+  while (state.items.length > 0 && state.items[0].kind.type === "sep") state.items.shift();
+  while (state.items.length > 0 && state.items[state.items.length - 1].kind.type === "sep") state.items.pop();
+  // Clamp cursor
+  const n = state.items.filter((i) => i.selectable).length;
+  if (state.cursor >= n) state.cursor = Math.max(0, n - 1);
+  render();
+
+  // Now do the actual async work in the background, then reconcile with a full refresh
   switch (item.kind.type) {
     case "conv": {
       const { convId, session } = item.kind;
@@ -931,8 +993,6 @@ async function doDelete(item: ListItem): Promise<void> {
       writeMeta(readMeta().filter((m) => m.tmux_session !== session));
       break;
     }
-    default:
-      break;
   }
   await refresh();
 }
