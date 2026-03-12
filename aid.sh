@@ -366,7 +366,8 @@ tmux -L aid set-environment -g TMUX_PLUGIN_MANAGER_PATH "$AID_DATA/tmux/plugins/
 # NVIM_APPNAME in the server environment means every pane shell inherits it.
 tmux -L aid set-environment -g NVIM_APPNAME "nvim"
 # AID_NVIM_SOCKET: session-local so concurrent sessions each target their own nvim.
-nvim_socket="/tmp/aid-nvim-${session}.sock"
+# Sanitize session name: replace '/' with '-' so the path has no subdirectories.
+nvim_socket="/tmp/aid-nvim-$(printf '%s' "$session" | tr '/' '-').sock"
 tmux -L aid set-environment -t "$session" AID_NVIM_SOCKET "$nvim_socket"
 dbg "nvim_socket=$nvim_socket"
 
