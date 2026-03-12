@@ -121,7 +121,10 @@ function metaFor(session: string): SessionMeta | undefined {
 // because opencode only surfaces a new conv to the instance that created it
 // first (the creator's navigator will win the write).
 
-const OPENCODE_DB = join(AID_DATA, "opencode/opencode.db");
+// opencode stores its DB under XDG_DATA_HOME/opencode/opencode.db.
+// orchestrator.sh launches opencode with XDG_DATA_HOME=$AID_DIR, so the DB
+// lives at $AID_DIR/opencode/opencode.db — NOT $AID_DATA/opencode/opencode.db.
+const OPENCODE_DB = join(AID_DIR, "opencode/opencode.db");
 
 /**
  * Tag convs that are still unowned (workspace_id IS NULL) as belonging to
