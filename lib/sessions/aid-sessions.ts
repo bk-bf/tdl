@@ -330,157 +330,164 @@ async function orcDeleteConversation(port: number, convId: string): Promise<void
   } catch { /* best-effort */ }
 }
 
-/** Look up the directory for a conv ID from the shared opencode SQLite DB. */
-function convDirectory(convId: string): string {
-  const dbPath = join(AID_DATA, "opencode/opencode.db");
-  try {
-    const db = new Database(dbPath, { readonly: true, create: false });
-    try {
-      const row = db
-        .query<{ directory: string }, [string]>(
-          "SELECT directory FROM session WHERE id = ? LIMIT 1",
-        )
-        .get(convId);
-      return row?.directory ?? "";
-    } finally {
-      db.close();
-    }
-  } catch {
-    return "";
-  }
-}
-
 /**
- * Overlay pane system — one persistent pane per foreign aid session.
+ * Foreign-session conv viewing via a borrowed pane window.
  *
- * Each foreign aid session gets exactly one overlay pane created on first
- * access. Switching between sessions swaps panes in/out of the "front" slot
- * (the large opencode position) without ever killing them. The original home
- * opencode pane is swapped to the background and keeps running.
+ * When the user selects a conv that belongs to a different aid session, we
+ * move that session's opencode pane into a temporary window inside the
+ * current session so the user can see it without leaving their session.
  *
- * state.frontPane  — pane ID currently occupying the front (large) slot.
- * state.overlayPanes — foreignSession → pane ID of its overlay.
+ * Flow:
+ *   1. Get the foreign session's AID_ORC_ORC_PANE env var to find its pane ID.
+ *   2. Create a temporary window (-d, no focus) in the current session.
+ *   3. move-pane the foreign orc pane into that window, killing the placeholder.
+ *   4. switch-client to the new window so the user sees the foreign opencode.
+ *   5. Tell the foreign opencode to select the requested conv via HTTP.
+ *
+ * state.foreignPane tracks the borrow so we can return the pane on cleanup.
+ *
+ * Returning home:
+ *   1. move-pane the foreign orc pane back to its original session window.
+ *   2. Kill the now-empty temporary window.
+ *   3. switch-client back to window 0.
  */
 
-/** Swap `paneA` and `paneB` positions/sizes in the window. */
-async function swapToFront(targetPane: string): Promise<void> {
-  const front = state.frontPane;
-  if (!front || front === targetPane) return;
-  await tmuxRun("swap-pane", "-s", front, "-t", targetPane);
-  state.frontPane = targetPane;
+/** Helper: get AID_ORC_ORC_PANE for a session from its tmux env. */
+async function orcPaneFor(session: string): Promise<string> {
+  const raw = await tmuxOutput("show-environment", "-t", session, "AID_ORC_ORC_PANE").catch(() => "");
+  return raw.match(/AID_ORC_ORC_PANE=(%\d+)/)?.[1] ?? "";
+}
+
+/** Helper: get the window ID that currently contains a given pane. */
+async function windowOfPane(paneId: string): Promise<string> {
+  const raw = await tmuxOutput("display-message", "-t", paneId, "-p", "#{window_id}").catch(() => "");
+  return raw.trim();
 }
 
 /**
- * Ensure an overlay pane exists for `foreignSession`, creating it if needed.
- * The pane runs opencode on the foreign session's deterministic port at `directory`.
- * Returns the pane ID, or "" on failure.
- */
-async function ensureOverlayPane(
-  foreignSession: string,
-  directory: string,
-): Promise<string> {
-  // Return existing pane if still alive.
-  const existing = state.overlayPanes.get(foreignSession);
-  if (existing) {
-    const alive = await tmuxOutput("display-message", "-t", existing, "-p", "#{pane_id}").catch(() => "");
-    if (alive.trim() === existing) return existing;
-    // Pane died — remove stale entry and recreate.
-    state.overlayPanes.delete(foreignSession);
-  }
-
-  // We need the front pane to split against.
-  if (!state.frontPane) return "";
-
-  const port = await computePort(foreignSession);
-  if (!port) return "";
-
-  const cmd = [
-    `OPENCODE_CONFIG_DIR=${JSON.stringify(join(AID_DIR, "opencode"))}`,
-    `OPENCODE_TUI_CONFIG=${JSON.stringify(join(AID_DIR, "opencode/tui.json"))}`,
-    `XDG_DATA_HOME=${JSON.stringify(AID_DATA)}`,
-    `opencode --port ${port} ${JSON.stringify(directory)}`,
-  ].join(" ");
-
-  // Split the current front pane: new pane gets 99% of space, pushing the
-  // existing front pane to a 1-line sliver in the background.
-  const newPaneId = await tmuxOutput(
-    "split-window", "-v", "-t", state.frontPane, "-p", "99", "-d", "-P", "-F", "#{pane_id}",
-    cmd,
-  );
-  const paneId = newPaneId.trim();
-  if (!paneId) return "";
-
-  // After split-window, the new pane is now at the large position and the
-  // old front is at the sliver. Update frontPane to reflect this.
-  state.frontPane = paneId;
-  state.overlayPanes.set(foreignSession, paneId);
-
-  dbg("OVERLAY", `created pane ${paneId} for ${foreignSession} port=${port}`);
-
-  // Poll until opencode is up (max ~10s).
-  for (let i = 0; i < 20; i++) {
-    await Bun.sleep(500);
-    try {
-      const resp = await fetch(`http://127.0.0.1:${port}/session`, {
-        signal: AbortSignal.timeout(500),
-      });
-      if (resp.ok) break;
-    } catch { /* not up yet */ }
-  }
-
-  return paneId;
-}
-
-/**
- * Switch to a conv in a foreign aid session:
- * - If the session already has an overlay pane, swap it to front and select the conv.
- * - Otherwise create a new overlay pane (opencode boots in the foreign session's dir),
- *   which naturally lands in the front position.
- * Navigation within the same foreign session never swaps — just tui/select-session.
+ * Move the foreign session's opencode pane into a temporary window in the
+ * current session, then switch the client to that window.
+ * Returns false if anything could not be resolved.
  */
 async function switchToForeignConv(
-  curSession: string,
   foreignSession: string,
   convId: string,
-  directory: string,
 ): Promise<boolean> {
-  const port = await computePort(foreignSession);
-  if (!port) return false;
-
-  const existing = state.overlayPanes.get(foreignSession);
-
-  if (existing) {
-    // Pane already exists — bring it to front if it isn't already.
-    if (state.frontPane !== existing) {
-      await swapToFront(existing);
-    }
-    // Select the conv inside this already-running opencode.
-    await orcSelectConversation(port, convId);
-  } else {
-    // No overlay yet — create one. ensureOverlayPane boots opencode and
-    // sets state.frontPane to the new pane automatically.
-    const paneId = await ensureOverlayPane(foreignSession, directory);
-    if (!paneId) return false;
-    await orcSelectConversation(port, convId);
+  // If a different foreign pane is already borrowed, return it first.
+  if (state.foreignPane && state.foreignPane.session !== foreignSession) {
+    await restoreHomeWindow();
   }
 
-  await tmuxRun("set-environment", "-t", curSession, "AID_ORC_ACTIVE_CONV", convId);
-  // Focus the front pane so the user sees the opencode TUI.
-  await tmuxRun("select-pane", "-t", state.frontPane);
+  // Find where the foreign orc pane currently lives (may already be in our
+  // temp window if we're switching convs within the same foreign session).
+  const foreignOrcPane = state.foreignPane?.paneId ?? await orcPaneFor(foreignSession);
+  if (!foreignOrcPane) return false;
+
+  // Get the current session name and its window 0 ID.
+  const curSession = TMUX_PANE
+    ? await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}").catch(() => "")
+    : "";
+  if (!curSession) return false;
+
+  // Determine the original window for the foreign pane (to return it later).
+  const originalWindow = state.foreignPane?.paneId
+    ? state.foreignPane.paneId  // already borrowed — reuse existing state
+    : await windowOfPane(foreignOrcPane);
+
+  let tempWindow = state.foreignPane?.tempWindow ?? "";
+
+  if (!state.foreignPane) {
+    // First time borrowing this foreign pane: create a temp window and move the pane in.
+    const winLabel = foreignSession.replace(/^aid@/, "");
+    // Create a placeholder window (-d = don't switch to it yet).
+    const newWin = await tmuxOutput(
+      "new-window", "-d", "-t", curSession, "-n", winLabel, "-P", "-F", "#{window_id}",
+      "--", "sleep", "infinity",
+    ).catch(() => "");
+    if (!newWin) return false;
+    tempWindow = newWin.trim();
+
+    // Get the placeholder pane in the new window so we can target it.
+    const placeholderPane = await tmuxOutput(
+      "list-panes", "-t", tempWindow, "-F", "#{pane_id}",
+    ).catch(() => "");
+    if (!placeholderPane) { await tmuxRun("kill-window", "-t", tempWindow); return false; }
+
+    // Move the foreign orc pane into the new window, replacing the placeholder.
+    const moved = await tmuxRun(
+      "move-pane", "-d", "-s", foreignOrcPane, "-t", placeholderPane.trim(),
+    );
+    if (!moved) { await tmuxRun("kill-window", "-t", tempWindow); return false; }
+
+    // Kill the now-orphaned placeholder (move-pane splits, so placeholder may still exist).
+    // List remaining panes; kill any that aren't the foreign orc pane.
+    const panesNow = await tmuxOutput("list-panes", "-t", tempWindow, "-F", "#{pane_id}").catch(() => "");
+    for (const p of panesNow.trim().split("\n").filter(Boolean)) {
+      if (p.trim() !== foreignOrcPane) {
+        await tmuxRun("kill-pane", "-t", p.trim());
+      }
+    }
+
+    state.foreignPane = { paneId: foreignOrcPane, originalWindow, tempWindow, session: foreignSession };
+    dbg("CONV", `foreign pane borrowed: pane=${foreignOrcPane} tempWin=${tempWindow} origWin=${originalWindow}`);
+  }
+
+  // Switch the client to the temp window.
+  const targetWindow = `${curSession}:${tempWindow}`;
+  if (AID_CALLER_CLIENT) {
+    await tmuxRun("switch-client", "-c", AID_CALLER_CLIENT, "-t", targetWindow);
+  } else {
+    await tmuxRun("switch-client", "-t", targetWindow);
+  }
+
+  // Tell the foreign opencode to select the conversation.
+  const port = await computePort(foreignSession);
+  if (port) {
+    await orcSelectConversation(port, convId);
+    await tmuxRun("set-environment", "-t", foreignSession, "AID_ORC_ACTIVE_CONV", convId);
+  }
+
   return true;
 }
 
 /**
- * Switch back to the home (current session) opencode pane.
- * Swaps `AID_ORC_ORC_PANE` back to the front position.
+ * Return the borrowed foreign orc pane to its original session window
+ * and kill the temporary window. Switch the client back to window 0.
+ * No-op if no foreign pane is currently borrowed.
  */
-async function switchToHomePane(curSession: string): Promise<void> {
-  const orcPaneRaw = await tmuxOutput("show-environment", "-t", curSession, "AID_ORC_ORC_PANE");
-  const m = orcPaneRaw.match(/AID_ORC_ORC_PANE=(%\d+)/);
-  if (!m) return;
-  const homePane = m[1];
-  if (state.frontPane !== homePane) {
-    await swapToFront(homePane);
+async function restoreHomeWindow(): Promise<void> {
+  if (!state.foreignPane) return;
+  const { paneId, originalWindow, tempWindow } = state.foreignPane;
+  state.foreignPane = null;
+
+  dbg("CONV", `restoring foreign pane=${paneId} to origWin=${originalWindow}`);
+
+  // Move the pane back to its original window.
+  const origWinPanes = await tmuxOutput("list-panes", "-t", originalWindow, "-F", "#{pane_id}").catch(() => "");
+  const origTarget = origWinPanes.trim().split("\n").filter(Boolean)[0]?.trim();
+  if (origTarget) {
+    await tmuxRun("move-pane", "-d", "-s", paneId, "-t", origTarget);
+    // Kill any residual placeholder panes in the original window.
+    const panesAfter = await tmuxOutput("list-panes", "-t", originalWindow, "-F", "#{pane_id}").catch(() => "");
+    for (const p of panesAfter.trim().split("\n").filter(Boolean)) {
+      if (p.trim() !== paneId) await tmuxRun("kill-pane", "-t", p.trim());
+    }
+  }
+
+  // Kill the temporary window.
+  await tmuxRun("kill-window", "-t", tempWindow);
+
+  // Switch client back to window 0 of the current session.
+  const curSession = TMUX_PANE
+    ? await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}").catch(() => "")
+    : "";
+  if (curSession) {
+    const win0 = `${curSession}:0`;
+    if (AID_CALLER_CLIENT) {
+      await tmuxRun("switch-client", "-c", AID_CALLER_CLIENT, "-t", win0);
+    } else {
+      await tmuxRun("switch-client", "-t", win0);
+    }
   }
 }
 
@@ -867,10 +874,15 @@ interface AppState {
   statusMsg: string;
   /** When true (default), each session only shows convs it owns. Toggle with 'f'. */
   filterBySession: boolean;
-  /** Maps foreign tmux session name → overlay pane ID (%NNN) in the current window. */
-  overlayPanes: Map<string, string>;
-  /** The pane ID currently occupying the "front" (large) opencode slot. */
-  frontPane: string;
+  /**
+   * When a foreign-session conv is being shown, this tracks the swap so we
+   * can reverse it.  null = home orc pane is in the orc slot (normal state).
+   *   paneId        — the foreign orc pane ID currently borrowed into our temp window
+   *   originalWindow — the window ID in the foreign session the pane came from
+   *   tempWindow    — the temporary window ID in the current session holding the pane
+   *   session       — the foreign tmux session name
+   */
+  foreignPane: { paneId: string; originalWindow: string; tempWindow: string; session: string } | null;
 }
 
 const state: AppState = {
@@ -880,8 +892,7 @@ const state: AppState = {
   refreshing: false,
   statusMsg: "",
   filterBySession: true,
-  overlayPanes: new Map(),
-  frontPane: "",
+  foreignPane: null,
 };
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -1149,14 +1160,13 @@ async function loadConversation(convId: string, session: string): Promise<void> 
     ? await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}")
     : "";
 
-  // Conv belongs to a different session — use the persistent overlay pane system.
+  // Conv belongs to a different session — borrow the foreign orc pane into
+  // a temporary window in this session.
   if (curSession && session !== curSession) {
-    const dir = convDirectory(convId);
-    if (!dir) { setStatus("could not find conv directory"); return; }
     setStatus("loading…");
     render();
-    const ok = await switchToForeignConv(curSession, session, convId, dir);
-    if (!ok) { setStatus("failed to open overlay pane"); return; }
+    const ok = await switchToForeignConv(session, convId);
+    if (!ok) { setStatus("failed to open foreign conv"); return; }
     for (const item of state.items) {
       if (item.kind.type !== "conv") continue;
       item.kind.active = item.kind.convId === convId;
@@ -1166,9 +1176,9 @@ async function loadConversation(convId: string, session: string): Promise<void> 
     return;
   }
 
-  // Conv belongs to the current session — bring home pane to front if an
-  // overlay is currently showing, then select via the live opencode.
-  await switchToHomePane(curSession);
+  // Conv belongs to the current session — if a foreign pane is currently
+  // borrowed, return it first so we're back on window 0.
+  await restoreHomeWindow();
 
   const port = await orcPort(session);
   if (!port) { setStatus("no opencode port for session"); return; }
@@ -1655,15 +1665,6 @@ async function boot(): Promise<void> {
   await Promise.all(initTasks);
   dbg("INIT", `caller client: ${AID_CALLER_CLIENT || "<none>"}`);
 
-  // Seed frontPane from AID_ORC_ORC_PANE so overlay swaps know the home position.
-  if (TMUX_PANE) {
-    const selfSession = await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}").catch(() => "");
-    if (selfSession) {
-      const orcPaneRaw = await tmuxOutput("show-environment", "-t", selfSession, "AID_ORC_ORC_PANE").catch(() => "");
-      const m = orcPaneRaw.match(/AID_ORC_ORC_PANE=(%\d+)/);
-      if (m) { state.frontPane = m[1]; dbg("INIT", `frontPane=${state.frontPane}`); }
-    }
-  }
   // Prune dead sessions from metadata (background, non-blocking)
   pruneDead().catch(() => { });
 
