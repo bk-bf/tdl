@@ -313,9 +313,12 @@ const A = {
   fgYellow:   "\x1b[33m",
   fgGray:     "\x1b[90m",
   bgSelected: "\x1b[48;5;236m",
-  clearScreen:"\x1b[2J\x1b[H",
-  hideCursor: "\x1b[?25l",
-  showCursor: "\x1b[?25h",
+  // Alternate screen buffer — no scrollback, no history leak
+  altScreenOn:  "\x1b[?1049h",
+  altScreenOff: "\x1b[?1049l",
+  clearScreen:  "\x1b[2J\x1b[H",
+  hideCursor:   "\x1b[?25l",
+  showCursor:   "\x1b[?25h",
   // Move cursor to absolute row (1-based), column 1, then erase to end of line
   moveTo: (row: number) => `\x1b[${row};1H\x1b[K`,
 };
@@ -833,8 +836,8 @@ function handleKey(key: Buffer): void {
 function cleanup(): void {
   if (refreshTimer) clearInterval(refreshTimer);
   if (statusClearTimer) clearTimeout(statusClearTimer);
-  try { process.stdout.write(A.showCursor + A.reset); } catch { /* EIO — tty gone */ }
-  // Disable any mouse tracking in case it was left on
+  // Leave alternate screen buffer, restore cursor and terminal state
+  try { process.stdout.write(A.altScreenOff + A.showCursor + A.reset); } catch { /* EIO — tty gone */ }
   try { process.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1006l"); } catch { /* ignore */ }
   try {
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -908,6 +911,9 @@ async function boot(): Promise<void> {
   }
   process.stdin.resume();
   process.stdin.on("data", handleKey);
+
+  // Enter alternate screen buffer — no scrollback, no history leak
+  try { process.stdout.write(A.altScreenOn); } catch { /* ignore */ }
 
   // Initial loading render
   state.mode = { type: "loading" };
