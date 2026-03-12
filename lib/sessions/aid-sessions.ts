@@ -917,8 +917,11 @@ function buildFrame(): string[] {
     `${A.dim}${A.fgMatch}${titleRightStr}${A.reset}`;
   lines.push(titleBar);
 
-  // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
-  const bodyRows = Math.max(1, rows - 4);
+  // Footer lines (computed first so we know how many rows it consumes)
+  const footerLines = buildFooter(state.mode, cols);
+
+  // Body area: rows minus title(1) + blank(1) + status(1) + footer lines
+  const bodyRows = Math.max(1, rows - 3 - footerLines.length);
 
   if (state.mode.type === "loading") {
     lines.push(`  ${A.dim}loading…${A.reset}`);
@@ -998,8 +1001,8 @@ function buildFrame(): string[] {
     lines.push("");
   }
 
-  // Footer (last row)
-  lines.push(buildFooter(state.mode, cols));
+  // Footer
+  for (const fl of footerLines) lines.push(fl);
 
   return lines;
 }
@@ -1022,41 +1025,71 @@ function render(): void {
   safeWrite(buf.join(""));
 }
 
-function buildFooter(mode: Mode, _cols: number): string {
+function buildFooter(mode: Mode, cols: number): string[] {
   // Key hint: purple bold key, then dim gray description
   const k   = (s: string) => `${A.reset}${A.bold}${A.fgPurple}${s}${A.reset}${A.dim}`;
-  const sep = `${A.fgGray}  ·  `;
+  const sepStr = "  ·  ";
+  const sep = `${A.fgGray}${sepStr}`;
+
+  let hints: Array<{ key: string; label: string }>;
   switch (mode.type) {
     case "nav":
     case "loading":
-      return (
-        `${A.dim}  ` +
-        `${k("↑↓")} nav${sep}` +
-        `${k("↵")} open${sep}` +
-        `${k("n")} new${sep}` +
-        `${k("r")} rename${sep}` +
-        `${k("d")} delete${sep}` +
-        `${k("f")} filter${sep}` +
-        `${k("^r")} refresh${sep}` +
-        `${k("q")} quit` +
-        A.reset
-      );
+      hints = [
+        { key: "↑↓", label: "nav" },
+        { key: "↵",  label: "open" },
+        { key: "n",  label: "new" },
+        { key: "r",  label: "rename" },
+        { key: "d",  label: "delete" },
+        { key: "f",  label: "filter" },
+        { key: "^r", label: "refresh" },
+        { key: "q",  label: "quit" },
+      ];
+      break;
     case "rename":
-      return (
-        `${A.dim}  ` +
-        `${k("↵")} confirm${sep}` +
-        `${k("esc")} cancel` +
-        A.reset
-      );
+      hints = [
+        { key: "↵",   label: "confirm" },
+        { key: "esc", label: "cancel" },
+      ];
+      break;
     case "delete-confirm": {
       const label = itemLabel(mode.item);
-      return (
-        `  ${A.fgRed}${A.bold}delete${A.reset} ` +
-        `${A.dim}${label}${A.reset}  ` +
-        `${A.bold}${A.fgAmber}y${A.reset}${A.dim}/${A.reset}${A.bold}n${A.reset}${A.dim}?${A.reset}`
-      );
+      return [`  ${A.fgRed}${A.bold}delete${A.reset} ${A.dim}${label}${A.reset}  ${A.bold}${A.fgAmber}y${A.reset}${A.dim}/${A.reset}${A.bold}n${A.reset}${A.dim}?${A.reset}`];
     }
   }
+
+  // Greedily pack hints onto lines, wrapping when a hint would overflow.
+  const indent = "  ";
+  const indentLen = indent.length;
+  const lines: string[] = [];
+  let lineStr = `${A.dim}${indent}`;
+  let lineLen = indentLen;
+  let first = true;
+
+  for (const { key, label } of hints) {
+    const hintPlain = `${key} ${label}`;
+    const hintLen = hintPlain.length;
+    const withSep = first ? hintLen : sepStr.length + hintLen;
+
+    if (!first && lineLen + withSep > cols) {
+      // Wrap: close current line, start a new one
+      lines.push(lineStr + A.reset);
+      lineStr = `${A.dim}${indent}`;
+      lineLen = indentLen;
+      first = true;
+    }
+
+    if (!first) {
+      lineStr += sep;
+      lineLen += sepStr.length;
+    }
+    lineStr += `${k(key)} ${label}`;
+    lineLen += hintLen;
+    first = false;
+  }
+
+  if (lineLen > indentLen) lines.push(lineStr + A.reset);
+  return lines.length > 0 ? lines : [""];
 }
 
 function itemLabel(item: ListItem): string {
