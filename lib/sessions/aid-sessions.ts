@@ -495,8 +495,8 @@ function renderItem(
       const nameColor = isCurrent ? A.fgPurple : A.fgLavender;
       const left = `${selBg}${caret}${A.bold}${nameColor}${projName}${rbg}${branch}`;
 
-      // live badge: warm orange bg, bright green text (tab_sel + git_add)
-      const liveBadge = ` ${A.bgLiveBadge}${A.fgGreen}${A.bold} live ${rst}${selBg}`;
+      // live indicator: dim green text, no background box
+      const liveBadge = ` ${A.fgGreen}${A.dim}live${rbg}`;
 
       content = rightAlign(left, liveBadge, cols);
       break;
@@ -535,8 +535,8 @@ function renderItem(
       const titleFmt = active ? `${A.bold}${A.fgWhite}` : "";
 
       const left  = `${selBg} ${treePfx} ${marker}${titleFmt}${title}${rbg}`;
-      // Age: amber (git_chg color)
-      const right = `${A.fgAmber}${A.dim}${age}${rbg}`;
+      // Age: dim gray
+      const right = `${A.fgGray}${A.dim}${age}${rbg}`;
       content = rightAlign(left, right, cols);
       break;
     }
@@ -605,13 +605,18 @@ function buildFrame(): string[] {
   const { cols, rows } = termSize();
   const lines: string[] = [];
 
-  // ── Row 1: title bar — full-width navy background ──────────────────────────
-  // Uses rightAlign so the right label is dropped when cols is too narrow.
-  // clampLine in render() guarantees the line never wraps regardless.
-  const sessionLabel = AID_ORC_NAME ? ` aid@${AID_ORC_NAME}` : " aid";
-  const titleLeft    = `${A.bgTitleBar}${A.fgWhite}${A.bold}${sessionLabel}`;
-  const titleRight   = `${A.bgTitleBar}${A.dim}${A.fgMatch} sessions ${A.reset}`;
-  lines.push(rightAlign(titleLeft, titleRight, cols));
+  // ── Row 1: title bar — full-width blue background ─────────────────────────
+  // Build the full-width bar explicitly so the gap chars carry the bg color.
+  // rightAlign() only inserts plain spaces (no escape codes) so we can't use
+  // it here — the gap would revert to terminal default background.
+  const titleLeftStr  = ` aid@${AID_ORC_NAME || "aid"}`;
+  const titleRightStr = " sessions ";
+  const titleGap = Math.max(1, cols - titleLeftStr.length - titleRightStr.length);
+  const titleBar =
+    `${A.bgTitleBar}${A.fgWhite}${A.bold}${titleLeftStr}` +
+    `${A.reset}${A.bgTitleBar}${" ".repeat(titleGap)}` +
+    `${A.dim}${A.fgMatch}${titleRightStr}${A.reset}`;
+  lines.push(titleBar);
 
   // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
   const bodyRows = Math.max(1, rows - 4);
