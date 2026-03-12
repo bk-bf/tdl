@@ -209,22 +209,26 @@ spawn_orc_session() {
     "OPENCODE_CONFIG_DIR=$(printf '%q' "$AID_DIR/opencode") OPENCODE_TUI_CONFIG=$(printf '%q' "$AID_DIR/opencode/tui.json") XDG_DATA_HOME=$(printf '%q' "$AID_DATA") opencode --port ${orc_port} $(printf '%q' "$repo_path")"
   _spawn_log "$debug_log" "orc_pane=${orc_pane} respawned (opencode)"
 
+  # In debug mode use --watch so panes hot-reload on source file changes.
+  local bun_run="bun run"
+  [[ "${AID_DEBUG:-0}" -eq 1 ]] && bun_run="bun run --watch"
+
   # Start the navigator in the left pane (aid-sessions.ts: TypeScript/Bun navigator).
   local nav_env
   nav_env="AID_DIR=$(printf '%q' "$AID_DIR") AID_DATA=$(printf '%q' "$AID_DATA") AID_CONFIG=$(printf '%q' "${AID_CONFIG:-}")"
   [[ -n "$debug_log" ]] && nav_env+=" AID_DEBUG_LOG=$(printf '%q' "$debug_log")"
-  _spawn_log "$debug_log" "respawn nav_pane=${nav_pane}: aid-sessions.ts"
+  _spawn_log "$debug_log" "respawn nav_pane=${nav_pane}: aid-sessions.ts (bun_run=${bun_run})"
   tmux -L aid respawn-pane -k -t "$nav_pane" \
-    "${nav_env} bun run $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions.ts")"
+    "${nav_env} ${bun_run} $(printf '%q' "$AID_DIR/lib/sessions/aid-sessions.ts")"
   _spawn_log "$debug_log" "nav_pane=${nav_pane} respawned (aid-sessions.ts)"
 
   # Start aid-diff in the right pane (TypeScript/Bun diff review pane).
   local diff_env
   diff_env="AID_DIR=$(printf '%q' "$AID_DIR") AID_ORC_REPO=$(printf '%q' "$repo_path")"
   [[ -n "$debug_log" ]] && diff_env+=" AID_DEBUG_LOG=$(printf '%q' "$debug_log")"
-  _spawn_log "$debug_log" "respawn diff_pane=${diff_pane}: aid-diff.ts"
+  _spawn_log "$debug_log" "respawn diff_pane=${diff_pane}: aid-diff.ts (bun_run=${bun_run})"
   tmux -L aid respawn-pane -k -t "$diff_pane" \
-    "${diff_env} bun run $(printf '%q' "$AID_DIR/lib/sessions/aid-diff.ts")"
+    "${diff_env} ${bun_run} $(printf '%q' "$AID_DIR/lib/sessions/aid-diff.ts")"
   _spawn_log "$debug_log" "diff_pane=${diff_pane} respawned (aid-diff.ts)"
 
   # Start the debug log viewer if in debug mode.
