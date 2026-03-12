@@ -295,17 +295,17 @@ async function buildList(): Promise<ListItem[]> {
 // ── ANSI terminal rendering ───────────────────────────────────────────────────
 
 const A = {
-  reset:      "\x1b[0m",
-  bold:       "\x1b[1m",
-  dim:        "\x1b[2m",
-  italic:     "\x1b[3m",
-  fgGreen:    "\x1b[32m",
-  fgRed:      "\x1b[31m",
-  fgBlue:     "\x1b[34m",
-  fgYellow:   "\x1b[33m",
-  fgGray:     "\x1b[90m",
+  reset: "\x1b[0m",
+  bold: "\x1b[1m",
+  dim: "\x1b[2m",
+  italic: "\x1b[3m",
+  fgGreen: "\x1b[32m",
+  fgRed: "\x1b[31m",
+  fgBlue: "\x1b[34m",
+  fgYellow: "\x1b[33m",
+  fgGray: "\x1b[90m",
   bgSelected: "\x1b[48;5;236m",
-  clearScreen:"\x1b[2J\x1b[H",
+  clearScreen: "\x1b[2J\x1b[H",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
 };
@@ -488,9 +488,9 @@ function buildFooter(mode: Mode, _cols: number): string {
 function itemLabel(item: ListItem): string {
   switch (item.kind.type) {
     case "session": return item.kind.session;
-    case "dead":    return item.kind.session;
-    case "conv":    return item.kind.title;
-    default:        return "";
+    case "dead": return item.kind.session;
+    case "conv": return item.kind.title;
+    default: return "";
   }
 }
 
@@ -553,7 +553,7 @@ async function loadConversation(convId: string, session: string): Promise<void> 
 async function newConversation(): Promise<void> {
   const item = currentItem();
   let targetSession = "";
-  if (item?.kind.type === "conv")    targetSession = item.kind.session;
+  if (item?.kind.type === "conv") targetSession = item.kind.session;
   if (item?.kind.type === "session") targetSession = item.kind.session;
   if (!targetSession && TMUX_PANE) {
     targetSession = await tmuxOutput(
@@ -687,9 +687,9 @@ function onEnter(): void {
   if (!item) return;
   switch (item.kind.type) {
     case "session": switchToSession(item.kind.session); break;
-    case "dead":    resurrectSession(item.kind.session); break;
-    case "conv":    loadConversation(item.kind.convId, item.kind.session); break;
-    default:        break;
+    case "dead": resurrectSession(item.kind.session); break;
+    case "conv": loadConversation(item.kind.convId, item.kind.session); break;
+    default: break;
   }
 }
 
@@ -698,8 +698,8 @@ function startRename(): void {
   if (!item) return;
   let session = "";
   if (item.kind.type === "session") session = item.kind.session;
-  else if (item.kind.type === "dead")    session = item.kind.session;
-  else if (item.kind.type === "conv")    session = item.kind.session;
+  else if (item.kind.type === "dead") session = item.kind.session;
+  else if (item.kind.type === "conv") session = item.kind.session;
   if (!session) return;
   const defaultName = session.replace(/^aid@/, "");
   state.mode = { type: "rename", session, input: defaultName };
@@ -796,9 +796,9 @@ function handleNavKey(key: Buffer): void {
 function handleKey(key: Buffer): void {
   dbg("KEY", `raw: ${[...key].map((b) => b.toString(16).padStart(2, "0")).join(" ")}`);
   switch (state.mode.type) {
-    case "rename":         handleRenameKey(key); break;
+    case "rename": handleRenameKey(key); break;
     case "delete-confirm": handleDeleteKey(key); break;
-    default:               handleNavKey(key); break;
+    default: handleNavKey(key); break;
   }
 }
 
@@ -815,11 +815,11 @@ function cleanup(): void {
   } catch { /* ignore */ }
 }
 
-process.on("exit",    cleanup);
+process.on("exit", cleanup);
 process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-process.on("SIGINT",  () => { cleanup(); process.exit(0); });
+process.on("SIGINT", () => { cleanup(); process.exit(0); });
 // SIGHUP: survive tmux respawn-pane -k which sends SIGHUP to the pane process group
-process.on("SIGHUP",  () => { /* ignore */ });
+process.on("SIGHUP", () => { /* ignore */ });
 process.stdout.on("resize", () => { render(); });
 
 // ── Background dead-session prune ─────────────────────────────────────────────
@@ -871,7 +871,7 @@ async function boot(): Promise<void> {
   }
 
   // Prune dead sessions from metadata (background, non-blocking)
-  pruneDead().catch(() => {});
+  pruneDead().catch(() => { });
 
   // Set up raw stdin
   if (process.stdin.isTTY) {
