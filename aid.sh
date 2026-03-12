@@ -335,17 +335,20 @@ tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
 # Set status-left/right to the vimbridge cat strings session-locally.
 # palette.conf uses set -g (global) so sourcing it again later (prefix+r) won't
 # clobber these session-local values.
-# tpipeline_restore is disabled — no save/restore on focus changes needed.
-# The bar always reads from the vimbridge files via #(cat ...) regardless of
-# which pane is focused; nvim keeps the files updated continuously.
-tmux -L aid set-option -t "$session" status-left  "#(cat #{socket_path}-\#{session_id}-vimbridge)"
-tmux -L aid set-option -t "$session" status-right "#(cat #{socket_path}-\#{session_id}-vimbridge-R)"
-
-# Pre-seed the vimbridge files with a placeholder so #(cat ...) never returns
-# empty during the nvim startup window (empty cat output causes tmux to fall
-# back to the global status-left, showing only the session name).
+# Two file pairs are used:
+#   vimbridge / vimbridge-R     — written by nvim/tpipeline (ide window)
+#   vimbridge-orc / vimbridge-orc-R — static ORCH content (orc window)
+# The #{?window_name,...} conditional picks the right file on every tmux
+# redraw — no hooks, no writes on window switch, no flicker.
 _tmux_socket=$(tmux -L aid display-message -t "$session" -p "#{socket_path}")
 _session_id=$(tmux -L aid display-message -t "$session" -p "#{session_id}")
+tmux -L aid set-option -t "$session" status-left \
+  "#(cat \#{?#{==:\#{window_name},orc},\#{socket_path}-\#{session_id}-vimbridge-orc,\#{socket_path}-\#{session_id}-vimbridge})"
+tmux -L aid set-option -t "$session" status-right \
+  "#(cat \#{?#{==:\#{window_name},orc},\#{socket_path}-\#{session_id}-vimbridge-orc-R,\#{socket_path}-\#{session_id}-vimbridge-R})"
+
+# Pre-seed the ide vimbridge files with a placeholder so #(cat ...) never
+# returns empty during the nvim startup window.
 printf ' ' > "${_tmux_socket}-${_session_id}-vimbridge"
 printf ' ' > "${_tmux_socket}-${_session_id}-vimbridge-R"
 
@@ -457,10 +460,8 @@ if [[ "$AID_NO_AI" -eq 0 ]]; then
   tmux -L aid respawn-pane -k -t "$local_diff_pane" \
     "${local_diff_env} bun run $(printf '%q' "$AID_DIR/lib/sessions/aid-diff.ts")"
 
-  # Build the ORCH vimbridge content — identical layout to the default status
-  # bar but with "ORCH" as the left mode indicator instead of the vim mode.
-  # Colours are read directly from palette.lua so this stays in sync with
-  # palette changes without needing a running tmux server.
+  # Build and seed the ORCH vimbridge files — static content for the orc window.
+  # Colours are read directly from palette.lua.
   _pal() { lua - "$AID_DIR/nvim/lua/palette.lua" <<LUA
 local p = assert(loadfile(arg[1]))(); io.write(p.$1)
 LUA
@@ -469,17 +470,10 @@ LUA
   _PL_L=$(printf '\xee\x82\xb2')
   _purple=$(_pal purple); _blue=$(_pal blue); _lavender=$(_pal lavender)
   _fg=$(_pal fg);         _cursor_fg=$(_pal cursor_fg)
-  orch_vimbridge_l="#[fg=${_cursor_fg},bg=${_purple},bold] ORCH #[fg=${_purple},bg=${_blue},none]${_PL_R}"
-  orch_vimbridge_r="#[fg=${_lavender},bg=${_blue}] #{pane_current_command} #[fg=${_blue},bg=${_lavender}]${_PL_L}#[fg=${_fg},bg=${_lavender}] %H:%M #[fg=${_lavender},bg=${_purple}]${_PL_L}#[fg=${_cursor_fg},bg=${_purple},bold] #{?client_prefix,PREFIX,#h} "
-
-  # ── Status bar hook: write ORCH into vimbridge files on orc window ──────────
-  # status-left/right always stay as #(cat vimbridge) — we never swap the
-  # option.  Instead the hook writes ORCH content into the files when the orc
-  # window is active; switching back to ide writes a space (nvim refills it).
-  tmux -L aid set-hook -t "$session" after-select-window \
-    "if-shell '[ \"#{window_name}\" = orc ]' \
-       'run-shell \"printf %s $(printf '%q' "$orch_vimbridge_l") > $(printf '%q' "${_tmux_socket}-${_session_id}-vimbridge") ; printf %s $(printf '%q' "$orch_vimbridge_r") > $(printf '%q' "${_tmux_socket}-${_session_id}-vimbridge-R")\"' \
-       'run-shell \"printf \\  > $(printf '%q' "${_tmux_socket}-${_session_id}-vimbridge") ; printf \\  > $(printf '%q' "${_tmux_socket}-${_session_id}-vimbridge-R")\"'"
+  printf '%s' "#[fg=${_cursor_fg},bg=${_purple},bold] Orchestrator #[fg=${_purple},bg=${_blue},none]${_PL_R}" \
+    > "${_tmux_socket}-${_session_id}-vimbridge-orc"
+  printf '%s' "#[fg=${_lavender},bg=${_blue}] #{pane_current_command} #[fg=${_blue},bg=${_lavender}]${_PL_L}#[fg=${_fg},bg=${_lavender}] %H:%M #[fg=${_lavender},bg=${_purple}]${_PL_L}#[fg=${_cursor_fg},bg=${_purple},bold] #{?client_prefix,PREFIX,#h} " \
+    > "${_tmux_socket}-${_session_id}-vimbridge-orc-R"
 else
   dbg "--no-ai set: skipping orchestrator window"
 fi
