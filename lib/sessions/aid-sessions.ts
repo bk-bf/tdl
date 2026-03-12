@@ -939,6 +939,46 @@ async function resurrectSession(session: string): Promise<void> {
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+/**
+ * Fast partial sync — only re-queries AID_ORC_ACTIVE_CONV for each live
+ * session and patches the `active` flag on existing conv items in-place.
+ * No HTTP calls, no list rebuild.  Runs in ~1 tmux round-trip per session.
+ * Fired after every nav keypress so the ● marker stays current.
+ */
+let activeSyncing = false;
+async function refreshActiveConvs(): Promise<void> {
+  if (activeSyncing) return;
+  activeSyncing = true;
+  try {
+    // Collect distinct sessions present in current item list
+    const sessions = [...new Set(
+      state.items
+        .filter((i) => i.kind.type === "conv")
+        .map((i) => (i.kind as { session: string }).session),
+    )];
+    if (sessions.length === 0) return;
+
+    // Fetch active conv id for each session in parallel
+    const activeMap = new Map(
+      await Promise.all(sessions.map(async (s) => [s, await orcActiveConv(s)] as const)),
+    );
+
+    // Patch items in-place — no re-render needed unless something changed
+    let changed = false;
+    for (const item of state.items) {
+      if (item.kind.type !== "conv") continue;
+      const wanted = activeMap.get(item.kind.session) === item.kind.convId;
+      if (item.kind.active !== wanted) {
+        item.kind.active = wanted;
+        changed = true;
+      }
+    }
+    if (changed) render();
+  } catch { /* best-effort */ } finally {
+    activeSyncing = false;
+  }
+}
+
 async function refresh(): Promise<void> {
   if (state.refreshing) return;
   state.refreshing = true;
@@ -1057,10 +1097,10 @@ function handleNavKey(key: Buffer): void {
   // Arrow keys: ESC [ A (up) / B (down) / 5~ (page-up) / 6~ (page-down)
   // Must be checked BEFORE the bare-ESC quit so ESC sequences aren't swallowed.
   if (key[0] === 0x1b && key[1] === 0x5b) {
-    if (key[2] === 0x41) { moveCursor(-1); return; }  // up
-    if (key[2] === 0x42) { moveCursor(1); return; }   // down
-    if (key[2] === 0x35) { moveCursor(-10); return; } // page-up  (ESC[5~)
-    if (key[2] === 0x36) { moveCursor(10); return; }  // page-down (ESC[6~)
+    if (key[2] === 0x41) { moveCursor(-1); refreshActiveConvs().catch(() => {}); return; }  // up
+    if (key[2] === 0x42) { moveCursor(1);  refreshActiveConvs().catch(() => {}); return; }  // down
+    if (key[2] === 0x35) { moveCursor(-10); refreshActiveConvs().catch(() => {}); return; } // page-up
+    if (key[2] === 0x36) { moveCursor(10);  refreshActiveConvs().catch(() => {}); return; } // page-down
   }
 
   // q / bare Escape / Ctrl-C → quit
@@ -1070,11 +1110,11 @@ function handleNavKey(key: Buffer): void {
   }
 
   // vim-style navigation
-  if (ch === "j") { moveCursor(1); return; }
-  if (ch === "k") { moveCursor(-1); return; }
+  if (ch === "j") { moveCursor(1);  refreshActiveConvs().catch(() => {}); return; }
+  if (ch === "k") { moveCursor(-1); refreshActiveConvs().catch(() => {}); return; }
 
   // Enter
-  if (key[0] === 0x0d || key[0] === 0x0a) { onEnter(); return; }
+  if (key[0] === 0x0d || key[0] === 0x0a) { onEnter(); refreshActiveConvs().catch(() => {}); return; }
 
   // n — new conversation
   if (ch === "n") { newConversation(); return; }
@@ -1085,7 +1125,7 @@ function handleNavKey(key: Buffer): void {
   // d — delete (inline confirm)
   if (ch === "d") { startDelete(); return; }
 
-  // Ctrl-R — force refresh
+  // Ctrl-R — force full refresh
   if (key[0] === 0x12) { dbg("KEY", "ctrl-r"); refresh(); return; }
 }
 
