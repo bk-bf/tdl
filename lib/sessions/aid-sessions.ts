@@ -303,19 +303,21 @@ async function buildList(): Promise<ListItem[]> {
 // ── ANSI terminal rendering ───────────────────────────────────────────────────
 
 const A = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  italic: "\x1b[3m",
-  fgGreen: "\x1b[32m",
-  fgRed: "\x1b[31m",
-  fgBlue: "\x1b[34m",
-  fgYellow: "\x1b[33m",
-  fgGray: "\x1b[90m",
+  reset:      "\x1b[0m",
+  bold:       "\x1b[1m",
+  dim:        "\x1b[2m",
+  italic:     "\x1b[3m",
+  fgGreen:    "\x1b[32m",
+  fgRed:      "\x1b[31m",
+  fgBlue:     "\x1b[34m",
+  fgYellow:   "\x1b[33m",
+  fgGray:     "\x1b[90m",
   bgSelected: "\x1b[48;5;236m",
-  clearScreen: "\x1b[2J\x1b[H",
+  clearScreen:"\x1b[2J\x1b[H",
   hideCursor: "\x1b[?25l",
   showCursor: "\x1b[?25h",
+  // Move cursor to absolute row (1-based), column 1, then erase to end of line
+  moveTo: (row: number) => `\x1b[${row};1H\x1b[K`,
 };
 
 function termSize(): { cols: number; rows: number } {
@@ -407,22 +409,36 @@ const state: AppState = {
 
 let statusClearTimer: ReturnType<typeof setTimeout> | null = null;
 
-function render(): void {
+// Previous frame lines (without ANSI) used for diffing.
+// Stored as rendered strings (with ANSI) so we can reuse them directly.
+let prevFrame: string[] = [];
+// Set to true when we need a full repaint (e.g. after resize or first render).
+let forceFullRepaint = true;
+
+function safeWrite(s: string): void {
+  try {
+    process.stdout.write(s);
+  } catch {
+    // EIO / broken pipe — terminal is gone, exit cleanly (cleanup's stdout
+    // writes will also be swallowed since they're now guarded)
+    cleanup();
+    process.exit(0);
+  }
+}
+
+function buildFrame(): string[] {
   const { cols, rows } = termSize();
-  const buf: string[] = [];
+  const lines: string[] = [];
 
-  buf.push(A.hideCursor);
-  buf.push(A.clearScreen);
+  // Row 1: title bar
+  lines.push(`${A.bold}${A.fgBlue} aid sessions ${A.reset}`);
 
-  // Title bar
-  const title = `${A.bold}${A.fgBlue} aid sessions ${A.reset}`;
-  buf.push(title + "\n");
-
-  // Body area: rows minus title(1) + blank(1) + status(1) + footer(1)
+  // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
   const bodyRows = Math.max(1, rows - 4);
 
   if (state.mode.type === "loading") {
-    buf.push(`  ${A.dim}loading…${A.reset}\n`);
+    lines.push(`  ${A.dim}loading…${A.reset}`);
+    for (let i = 1; i < bodyRows; i++) lines.push("");
   } else {
     const selectableIndices = state.items
       .map((item, i) => (item.selectable ? i : -1))
@@ -445,26 +461,54 @@ function render(): void {
       const item = visible[i];
       const isCursorItem =
         item.selectable && selectableIndices[state.cursor] === globalIdx;
-      buf.push(renderItem(item, isCursorItem, cols) + "\n");
+      lines.push(renderItem(item, isCursorItem, cols));
+    }
+    // Pad body to bodyRows so footer stays pinned
+    while (lines.length < 1 + bodyRows) lines.push("");
+  }
+
+  // Blank separator
+  lines.push("");
+
+  // Status line (rows - 2, 0-based)
+  if (state.statusMsg) {
+    lines.push(`  ${A.fgYellow}${state.statusMsg}${A.reset}`);
+  } else {
+    lines.push("");
+  }
+
+  // Footer (last row)
+  lines.push(buildFooter(state.mode, cols));
+
+  return lines;
+}
+
+function render(): void {
+  const newFrame = buildFrame();
+  const buf: string[] = [A.hideCursor];
+
+  if (forceFullRepaint) {
+    // Full clear + rewrite — only on first render or after resize
+    buf.push(A.clearScreen);
+    for (let i = 0; i < newFrame.length; i++) {
+      buf.push(newFrame[i] + "\n");
+    }
+    forceFullRepaint = false;
+  } else {
+    // Diff: only rewrite lines that changed
+    const len = Math.max(newFrame.length, prevFrame.length);
+    for (let i = 0; i < len; i++) {
+      const next = newFrame[i] ?? "";
+      const prev = prevFrame[i] ?? "";
+      if (next !== prev) {
+        // Move to row i+1 (1-based), erase line, write new content
+        buf.push(A.moveTo(i + 1) + next);
+      }
     }
   }
 
-  // Push footer to bottom
-  const linesUsed = 1 + Math.min(bodyRows, state.items.length);
-  const padding = Math.max(0, rows - linesUsed - 3);
-  if (padding > 0) buf.push("\n".repeat(padding));
-
-  // Status line
-  if (state.statusMsg) {
-    buf.push(`  ${A.fgYellow}${state.statusMsg}${A.reset}\n`);
-  } else {
-    buf.push("\n");
-  }
-
-  // Footer / mode line
-  buf.push(buildFooter(state.mode, cols) + "\n");
-
-  process.stdout.write(buf.join(""));
+  prevFrame = newFrame;
+  safeWrite(buf.join(""));
 }
 
 function buildFooter(mode: Mode, _cols: number): string {
@@ -807,9 +851,9 @@ function handleKey(key: Buffer): void {
 function cleanup(): void {
   if (refreshTimer) clearInterval(refreshTimer);
   if (statusClearTimer) clearTimeout(statusClearTimer);
-  process.stdout.write(A.showCursor + A.reset);
+  try { process.stdout.write(A.showCursor + A.reset); } catch { /* EIO — tty gone */ }
   // Disable any mouse tracking in case it was left on
-  process.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1006l");
+  try { process.stdout.write("\x1b[?1000l\x1b[?1002l\x1b[?1006l"); } catch { /* ignore */ }
   try {
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
   } catch { /* ignore */ }
@@ -821,9 +865,9 @@ process.on("SIGINT", () => { cleanup(); process.exit(0); });
 // SIGHUP: survive tmux respawn-pane -k which sends SIGHUP to the pane process group
 process.on("SIGHUP", () => { /* ignore */ });
 // Safety net: always restore terminal on any unhandled error before dying
-process.on("uncaughtException", (e) => { dbg("ERR", `uncaught: ${e}`); cleanup(); process.exit(1); });
-process.on("unhandledRejection", (e) => { dbg("ERR", `unhandledRejection: ${e}`); cleanup(); process.exit(1); });
-process.stdout.on("resize", () => { render(); });
+process.on("uncaughtException", (e) => { dbg("ERR", `uncaught: ${e}`); try { cleanup(); } catch { /* ignore */ } process.exit(1); });
+process.on("unhandledRejection", (e) => { dbg("ERR", `unhandledRejection: ${e}`); try { cleanup(); } catch { /* ignore */ } process.exit(1); });
+process.stdout.on("resize", () => { forceFullRepaint = true; prevFrame = []; render(); });
 
 // ── Background dead-session prune ─────────────────────────────────────────────
 
