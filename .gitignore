@@ -39,8 +39,12 @@ tmux/plugins/*
 !tmux/plugins/.gitkeep
 !tmux/plugins/.gitignore
 
-# ── bun runtime ──────────────────────────────────────────────────────────────
+# ── bun / TypeScript tooling ─────────────────────────────────────────────────
 .bun/
+node_modules/
+package.json
+bun.lock
+bun.lockb
 
 # ── nvim runtime artefacts ────────────────────────────────────────────────────
 # These land under $AID_DIR/nvim/ only on stale/misconfigured installs.
