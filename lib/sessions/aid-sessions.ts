@@ -918,7 +918,7 @@ function buildFrame(): string[] {
   // rightAlign() only inserts plain spaces (no escape codes) so we can't use
   // it here — the gap would revert to terminal default background.
   const titleLeftStr  = ` aid@${AID_ORC_NAME || "aid"}`;
-  const filterTag     = state.filterBySession ? "" : ` ${A.reset}${A.bgTitleBar}${A.fgYellow}[all]`;
+  const filterTag     = state.filterBySession ? "" : ` ${A.reset}${A.bgTitleBar}${A.fgAmber}[all]`;
   const titleRightStr = " sessions ";
   const filterTagLen  = state.filterBySession ? 0 : 6; // " [all]" = 6 visible chars
   const titleGap = Math.max(1, cols - titleLeftStr.length - filterTagLen - titleRightStr.length);
@@ -1439,7 +1439,7 @@ function onEnter(): void {
   const item = currentItem();
   if (!item) return;
   switch (item.kind.type) {
-    case "session": break; // already in this session; n to add a conversation
+    case "session": switchToSession(item.kind.session); break; // switch client to this session
     case "dead": resurrectSession(item.kind.session); break;
     case "conv": loadConversation(item.kind.convId, item.kind.session); break;
     default: break;
