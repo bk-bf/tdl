@@ -138,6 +138,16 @@ function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*[mGKHABCDJsuhl?]/g, "");
 }
 
+/**
+ * Remove ANSI Erase-Line sequences (\x1b[K / \x1b[0K / \x1b[2K) that delta
+ * appends to the end of each coloured diff line to clear the rest of the
+ * terminal row.  We write lines positionally so we don't want those.
+ */
+function stripEraseLine(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-2]?K/g, "");
+}
+
 function clampLine(s: string, maxCols: number): string {
   if (maxCols <= 0) return A.reset;
   let visible = 0;
@@ -165,11 +175,15 @@ function clampLine(s: string, maxCols: number): string {
  * so colour doesn't bleed.
  *
  * Returns at least one element (may be empty string for a blank input line).
+ *
+ * @param continuationIndent  Number of spaces to prepend on every continuation
+ *   row (after the first).  Use this to align wrapped code past a fixed gutter.
  */
-function wrapLine(s: string, maxCols: number): string[] {
+function wrapLine(s: string, maxCols: number, continuationIndent = 0): string[] {
   if (maxCols <= 0) return [A.reset];
   // eslint-disable-next-line no-control-regex
   const ESC_RE = /^\x1b\[[0-9;]*[mGKHABCDJsuhl?]/;
+  const indent = " ".repeat(Math.max(0, continuationIndent));
 
   const rows: string[] = [];
   let row = "";
@@ -192,8 +206,8 @@ function wrapLine(s: string, maxCols: number): string[] {
     if (visible >= maxCols) {
       // Flush current row and start a new one, re-applying active colour.
       rows.push(row + A.reset);
-      row = activeSgr;
-      visible = 0;
+      row = indent + activeSgr;
+      visible = continuationIndent;
     }
 
     row += s[i];
@@ -304,11 +318,32 @@ async function fileDiff(file: string, mode: DiffMode, cols: number): Promise<str
   const raw = await runGit(...args);
   if (!raw.trim()) return [];
 
-  // Try delta for syntax highlighting.
+  // Try delta for syntax highlighting, line numbers, and muted diff colours.
   let rendered = raw;
   try {
     const proc = Bun.spawn(
-      ["delta", "--no-gitconfig", `--width=${cols}`, "--paging=never"],
+      [
+        "delta",
+        "--no-gitconfig",
+        `--width=${cols}`,
+        "--paging=never",
+        // Line numbers
+        "-n",
+        "--line-numbers-left-format={nm:>4}⋮",
+        "--line-numbers-right-format={np:>4}│ ",
+        "--line-numbers-left-style=dim #5a5a7a",
+        "--line-numbers-right-style=dim #5a5a7a",
+        "--line-numbers-minus-style=dim #7a4a4a",
+        "--line-numbers-plus-style=dim #4a6a4a",
+        // Muted add/remove line backgrounds (dark tint, no vivid red/green)
+        "--minus-style=normal '#2a1a1a'",
+        "--minus-emph-style=normal '#4a1a1a'",
+        "--plus-style=normal '#1a2a1a'",
+        "--plus-emph-style=normal '#1a3a1a'",
+        "--zero-style=normal",
+        "--hunk-header-style=omit",
+        "--file-style=omit",
+      ],
       { stdin: "pipe", stdout: "pipe", stderr: "ignore" },
     );
     proc.stdin.write(raw);
@@ -329,7 +364,12 @@ async function fileDiff(file: string, mode: DiffMode, cols: number): Promise<str
     } catch { /* use plain raw */ }
   }
 
-  return rendered.split("\n");
+  // Strip EL sequences, drop leading/trailing blank lines that delta adds
+  // around hunks (they show as dead whitespace in our positional renderer).
+  const result = rendered.split("\n").map(stripEraseLine);
+  while (result.length > 0 && result[0].trim() === "") result.shift();
+  while (result.length > 0 && result[result.length - 1].trim() === "") result.pop();
+  return result;
 }
 
 // ── File watcher ──────────────────────────────────────────────────────────────
@@ -564,14 +604,7 @@ function buildStatRow(left: string, right: string, cols: number): string {
 /**
  * Render the inline diff section for an expanded file.
  * Returns an array of display lines (soft-wrapped to cols).
- *
- * Each diff line gets a gutter showing the line number:
- *   old-line-number / new-line-number
- * e.g.  "  12   │ context line"
- *        "  --  13│+added line"
- *        " 12   --│-removed line"
- *
- * Line numbers are parsed from @@ hunk headers in the cached diff.
+ * Line numbers and colours are handled by delta in fileDiff().
  */
 function renderDiffSection(file: string, cols: number): string[] {
   const lines: string[] = [];
@@ -593,101 +626,11 @@ function renderDiffSection(file: string, cols: number): string[] {
     return lines;
   }
 
-  // ── Line-number gutter ───────────────────────────────────────────────────
-  // We need enough room for "  NNN NNN│" — compute gutter width from the max
-  // line number in the diff so the gutter is as narrow as possible.
-  // First pass: find max old/new line numbers.
-  let maxLineNo = 1;
-  {
-    let newNo = 0;
-    let oldNo = 0;
-    for (const raw of cached) {
-      const plain = stripAnsi(raw);
-      const hunk = plain.match(/^@@[^+]*\+(\d+)(?:,(\d+))?.*@@/);
-      if (hunk) {
-        newNo = parseInt(hunk[1], 10);
-        oldNo = newNo;  // rough — good enough for gutter width
-      } else if (plain.startsWith("+") && !plain.startsWith("+++")) {
-        maxLineNo = Math.max(maxLineNo, newNo);
-        newNo++;
-      } else if (plain.startsWith("-") && !plain.startsWith("---")) {
-        maxLineNo = Math.max(maxLineNo, oldNo);
-        oldNo++;
-      } else if (!plain.startsWith("\\")) {
-        maxLineNo = Math.max(maxLineNo, newNo);
-        newNo++;
-        oldNo++;
-      }
-    }
-  }
-  const noWidth  = String(maxLineNo).length;      // digits for one number
-  const gutterW  = noWidth * 2 + 3;               // "NNN NNN│" = 2*n + 1(space) + 1(sep) + 1(│) → keep it tight
-  const codeW    = Math.max(1, cols - gutterW);   // remaining columns for code
-
-  // Gutter rendering helpers.
-  const gutterSep = `${A.fgGray}${A.dim}│${A.reset}`;
-  const blank     = " ".repeat(noWidth);
-  const dash      = `${A.fgGray}${A.dim}${"─".repeat(noWidth)}${A.reset}`;
-
-  function fmtNo(n: number): string {
-    return `${A.fgGray}${A.dim}${String(n).padStart(noWidth)}${A.reset}`;
-  }
-
-  // Second pass: emit gutter + wrapped code lines.
-  let newLineNo = 0;
-  let oldLineNo = 0;
-  let inHunk    = false;
-
   for (const raw of cached) {
-    const plain = stripAnsi(raw);
-
-    // Hunk header: @@ -old,len +new,len @@
-    const hunkM = plain.match(/^@@[^+]*\+(\d+)(?:,\d+)?.*@@/);
-    if (hunkM) {
-      newLineNo = parseInt(hunkM[1], 10);
-      oldLineNo = newLineNo;
-      inHunk = true;
-      // Emit hunk header without gutter (it's a meta line, already styled by delta).
-      const wrapped = wrapLine(raw, cols);
-      for (const wl of wrapped) lines.push(wl);
-      continue;
-    }
-
-    if (!inHunk) {
-      // File header lines (diff --git, index, ---, +++ lines) — no gutter.
-      const wrapped = wrapLine(raw, cols);
-      for (const wl of wrapped) lines.push(wl);
-      continue;
-    }
-
-    // No-newline marker
-    if (plain.startsWith("\\")) {
-      const wrapped = wrapLine(raw, codeW);
-      const gutterStr = `${blank} ${blank}${gutterSep}`;
-      for (const wl of wrapped) lines.push(gutterStr + wl);
-      continue;
-    }
-
-    let gutterStr: string;
-    if (plain.startsWith("+") && !plain.startsWith("+++")) {
-      gutterStr = `${dash} ${fmtNo(newLineNo)}${gutterSep}`;
-      newLineNo++;
-    } else if (plain.startsWith("-") && !plain.startsWith("---")) {
-      gutterStr = `${fmtNo(oldLineNo)} ${dash}${gutterSep}`;
-      oldLineNo++;
-    } else {
-      // Context line
-      gutterStr = `${fmtNo(oldLineNo)} ${fmtNo(newLineNo)}${gutterSep}`;
-      oldLineNo++;
-      newLineNo++;
-    }
-
-    // Wrap the code portion only (gutter is fixed-width and always fits).
-    const wrapped = wrapLine(raw, codeW);
-    for (let wi = 0; wi < wrapped.length; wi++) {
-      // Only the first wrap row gets the real gutter; continuation rows get blank gutter.
-      const g = wi === 0 ? gutterStr : `${blank} ${blank}${gutterSep}`;
-      lines.push(g + wrapped[wi]);
+    // Delta's gutter is "{nm:>4}⋮{np:>4}│ " = 11 visible chars.
+    // Continuation rows are indented by the same width so wrapped code aligns.
+    for (const wl of wrapLine(raw, cols, 11)) {
+      lines.push(wl);
     }
   }
 
@@ -810,13 +753,12 @@ function buildFooter(cols: number): string {
 }
 
 function render(): void {
-  const { cols } = termSize();
   const frame = buildFrame();
   const buf: string[] = [];
   buf.push(A.hideCursor);
   buf.push(A.clearScreen);
   for (let i = 0; i < frame.length; i++) {
-    buf.push(A.moveTo(i + 1) + clampLine(frame[i], cols));
+    buf.push(A.moveTo(i + 1) + frame[i]);
   }
   safeWrite(buf.join(""));
 }
