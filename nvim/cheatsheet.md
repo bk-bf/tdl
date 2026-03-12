@@ -100,7 +100,26 @@
 
   「C-h/j/k/l」      navigate panes           aid              new session (cwd)
   「M-←/→/↑/↓」    navigate panes (alt)     aid -a [name]    attach to session
+  「M-q」            close pane               「M-Q」          kill session (confirm)
   「leader」?        reopen this cheatsheet   aid -l           list sessions
+
+  「prefix+1」       IDE window               「prefix+2」     orchestrator window
+                     tree · editor · AI        navigator · opencode · diff
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  ORCHESTRATOR  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  navigator (left pane — active in prefix+2 window)
+
+  「↑/k」「↓/j」    move cursor              「Enter」        load conversation
+  「n」              new session              「r」            rename session
+  「d」              delete session           「C-R」          force refresh
+
+  diff pane (right pane — active in prefix+2 window)
+
+  「↑/k」「↓/j」    scroll                   「Enter/Space」  expand file diff
+  「t」              cycle mode               「r」            refresh
+                     HEAD · staged · unstaged
 
 
                       ── open any file to start editing ──
