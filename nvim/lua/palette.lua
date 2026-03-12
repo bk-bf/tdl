@@ -24,8 +24,8 @@ M.tab_sel     = "#a06a45"   -- active / selected tab background (burnt orange)
 M.tab_fg      = "#ffffff"   -- all tab foreground text
 
 -- ── Git signs ────────────────────────────────────────────────────────────
-M.git_add     = "#50fa7b"   -- added line sign (Dracula green)
-M.git_del     = "#ff5555"   -- deleted line sign (Dracula red)
+M.git_add     = "#a8f5c2"   -- added line sign (soft mint green)
+M.git_del     = "#ffaaaa"   -- deleted line sign (soft pink red)
 M.git_chg     = "#ffaa00"   -- changed line sign (amber)
 M.git_dot     = "#caa5f7"    -- treemux git status dot (dirty/staged icons in nvim-tree)
 M.git_del_ln  = "#3d1a1a"   -- deleted line background

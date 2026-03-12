@@ -103,14 +103,14 @@ function buildAnsi(p: Record<string, string>) {
     fgPurple:   pfg("purple",    "#b57bee"),
     fgBlue:     pfg("blue",      "#6180C5"),
     fgLavender: pfg("lavender",  "#A284C6"),
-    fgGreen:    pfg("git_add",   "#50fa7b"),
-    fgRed:      pfg("git_del",   "#ff5555"),
+    fgGreen:    pfg("git_add",   "#a8f5c2"),
+    fgRed:      pfg("git_del",   "#ffaaaa"),
     fgAmber:    pfg("git_chg",   "#ffaa00"),
     fgGray:     pfg("cmp_menu",  "#7a6e96"),
 
     bgTitleBar:  pbg("blue",      "#6180C5"),
     bgSelected:  pbg("cmp_sel_bg","#3a3450"),
-    bgAddLine:   pbg("git_add",   "#50fa7b"),  // unused directly — delta handles hunk bg
+    bgAddLine:   pbg("git_add",   "#a8f5c2"),  // unused directly — delta handles hunk bg
     bgDelLine:   pbg("git_del_ln","#3d1a1a"),
 
     altScreenOn:  "\x1b[?1049h",
@@ -153,6 +153,56 @@ function clampLine(s: string, maxCols: number): string {
     out += s[i]; visible++; i++;
   }
   return out + A.reset;
+}
+
+/**
+ * Wrap a single (potentially long) ANSI-coloured string into multiple display
+ * rows of at most `maxCols` visible characters each.
+ *
+ * ANSI escape sequences are threaded through without counting toward the
+ * visible width.  When a row reaches `maxCols` printable chars we start a new
+ * row, re-emitting any active SGR state at the start of the continuation line
+ * so colour doesn't bleed.
+ *
+ * Returns at least one element (may be empty string for a blank input line).
+ */
+function wrapLine(s: string, maxCols: number): string[] {
+  if (maxCols <= 0) return [A.reset];
+  // eslint-disable-next-line no-control-regex
+  const ESC_RE = /^\x1b\[[0-9;]*[mGKHABCDJsuhl?]/;
+
+  const rows: string[] = [];
+  let row = "";
+  let visible = 0;
+  // Track the last "active" SGR string so continuation lines inherit colour.
+  let activeSgr = "";
+  let i = 0;
+
+  while (i < s.length) {
+    const rest = s.slice(i);
+    const m = rest.match(ESC_RE);
+    if (m) {
+      row += m[0];
+      // Keep track of the most recent colour/style escape (SGR = ends with 'm').
+      if (m[0].endsWith("m")) activeSgr = m[0] === A.reset ? "" : m[0];
+      i += m[0].length;
+      continue;
+    }
+
+    if (visible >= maxCols) {
+      // Flush current row and start a new one, re-applying active colour.
+      rows.push(row + A.reset);
+      row = activeSgr;
+      visible = 0;
+    }
+
+    row += s[i];
+    visible++;
+    i++;
+  }
+
+  rows.push(row + A.reset);
+  return rows;
 }
 
 function safeWrite(s: string): void {
@@ -513,7 +563,15 @@ function buildStatRow(left: string, right: string, cols: number): string {
 
 /**
  * Render the inline diff section for an expanded file.
- * Returns an array of display lines (already clamped to cols).
+ * Returns an array of display lines (soft-wrapped to cols).
+ *
+ * Each diff line gets a gutter showing the line number:
+ *   old-line-number / new-line-number
+ * e.g.  "  12   │ context line"
+ *        "  --  13│+added line"
+ *        " 12   --│-removed line"
+ *
+ * Line numbers are parsed from @@ hunk headers in the cached diff.
  */
 function renderDiffSection(file: string, cols: number): string[] {
   const lines: string[] = [];
@@ -535,8 +593,102 @@ function renderDiffSection(file: string, cols: number): string[] {
     return lines;
   }
 
-  for (const rawLine of cached) {
-    lines.push(clampLine(rawLine, cols));
+  // ── Line-number gutter ───────────────────────────────────────────────────
+  // We need enough room for "  NNN NNN│" — compute gutter width from the max
+  // line number in the diff so the gutter is as narrow as possible.
+  // First pass: find max old/new line numbers.
+  let maxLineNo = 1;
+  {
+    let newNo = 0;
+    let oldNo = 0;
+    for (const raw of cached) {
+      const plain = stripAnsi(raw);
+      const hunk = plain.match(/^@@[^+]*\+(\d+)(?:,(\d+))?.*@@/);
+      if (hunk) {
+        newNo = parseInt(hunk[1], 10);
+        oldNo = newNo;  // rough — good enough for gutter width
+      } else if (plain.startsWith("+") && !plain.startsWith("+++")) {
+        maxLineNo = Math.max(maxLineNo, newNo);
+        newNo++;
+      } else if (plain.startsWith("-") && !plain.startsWith("---")) {
+        maxLineNo = Math.max(maxLineNo, oldNo);
+        oldNo++;
+      } else if (!plain.startsWith("\\")) {
+        maxLineNo = Math.max(maxLineNo, newNo);
+        newNo++;
+        oldNo++;
+      }
+    }
+  }
+  const noWidth  = String(maxLineNo).length;      // digits for one number
+  const gutterW  = noWidth * 2 + 3;               // "NNN NNN│" = 2*n + 1(space) + 1(sep) + 1(│) → keep it tight
+  const codeW    = Math.max(1, cols - gutterW);   // remaining columns for code
+
+  // Gutter rendering helpers.
+  const gutterSep = `${A.fgGray}${A.dim}│${A.reset}`;
+  const blank     = " ".repeat(noWidth);
+  const dash      = `${A.fgGray}${A.dim}${"─".repeat(noWidth)}${A.reset}`;
+
+  function fmtNo(n: number): string {
+    return `${A.fgGray}${A.dim}${String(n).padStart(noWidth)}${A.reset}`;
+  }
+
+  // Second pass: emit gutter + wrapped code lines.
+  let newLineNo = 0;
+  let oldLineNo = 0;
+  let inHunk    = false;
+
+  for (const raw of cached) {
+    const plain = stripAnsi(raw);
+
+    // Hunk header: @@ -old,len +new,len @@
+    const hunkM = plain.match(/^@@[^+]*\+(\d+)(?:,\d+)?.*@@/);
+    if (hunkM) {
+      newLineNo = parseInt(hunkM[1], 10);
+      oldLineNo = newLineNo;
+      inHunk = true;
+      // Emit hunk header without gutter (it's a meta line, already styled by delta).
+      const wrapped = wrapLine(raw, cols);
+      for (const wl of wrapped) lines.push(wl);
+      continue;
+    }
+
+    if (!inHunk) {
+      // File header lines (diff --git, index, ---, +++ lines) — no gutter.
+      const wrapped = wrapLine(raw, cols);
+      for (const wl of wrapped) lines.push(wl);
+      continue;
+    }
+
+    // No-newline marker
+    if (plain.startsWith("\\")) {
+      const wrapped = wrapLine(raw, codeW);
+      const gutterStr = `${blank} ${blank}${gutterSep}`;
+      for (const wl of wrapped) lines.push(gutterStr + wl);
+      continue;
+    }
+
+    let gutterStr: string;
+    if (plain.startsWith("+") && !plain.startsWith("+++")) {
+      gutterStr = `${dash} ${fmtNo(newLineNo)}${gutterSep}`;
+      newLineNo++;
+    } else if (plain.startsWith("-") && !plain.startsWith("---")) {
+      gutterStr = `${fmtNo(oldLineNo)} ${dash}${gutterSep}`;
+      oldLineNo++;
+    } else {
+      // Context line
+      gutterStr = `${fmtNo(oldLineNo)} ${fmtNo(newLineNo)}${gutterSep}`;
+      oldLineNo++;
+      newLineNo++;
+    }
+
+    // Wrap the code portion only (gutter is fixed-width and always fits).
+    const wrapped = wrapLine(raw, codeW);
+    for (let wi = 0; wi < wrapped.length; wi++) {
+      // Only the first wrap row gets the real gutter; continuation rows get blank gutter.
+      const g = wi === 0 ? gutterStr : `${blank} ${blank}${gutterSep}`;
+      lines.push(g + wrapped[wi]);
+    }
   }
 
   return lines;

@@ -135,14 +135,20 @@ spawn_orc_session() {
     -x "$(tput cols)" -y "$(tput lines)"
   tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
 
+  # Read palette-generated orchestrator status strings (written by gen-tmux-palette.sh).
+  local orch_status_l orch_status_r
+  orch_status_l=$(tmux -L aid show-option -gqv @aid_orch_status_left)
+  orch_status_r=$(tmux -L aid show-option -gqv @aid_orch_status_right)
+
   # Pre-seed vimbridge placeholders.
   local tmux_socket session_id
   tmux_socket=$(tmux -L aid display-message -t "$session" -p "#{socket_path}")
   session_id=$(tmux -L aid display-message  -t "$session" -p "#{session_id}")
   printf ' ' > "${tmux_socket}-${session_id}-vimbridge"
   printf ' ' > "${tmux_socket}-${session_id}-vimbridge-R"
-  tmux -L aid set-option -t "$session" status-left  "#(cat #{socket_path}-\#{session_id}-vimbridge)"
-  tmux -L aid set-option -t "$session" status-right "#(cat #{socket_path}-\#{session_id}-vimbridge-R)"
+  # Window 0 (orchestrator layout) starts active — show the ORCH pill immediately.
+  tmux -L aid set-option -t "$session" status-left  "$orch_status_l"
+  tmux -L aid set-option -t "$session" status-right "$orch_status_r"
 
   # Session-local env.
   tmux -L aid set-environment -t "$session" AID_NVIM_SOCKET   "$nvim_socket"
@@ -283,14 +289,13 @@ spawn_orc_session() {
   tmux -L aid set-hook -t "$session" pane-focus-in \
     "run-shell \"AID_DATA=$(printf '%q' "$AID_DATA") $(printf '%q' "$AID_DIR/lib/sessions/aid-meta-touch") $(printf '%q' "$session")\""
 
-  # Hook: status bar context — vimbridge when nvim window active, else project label.
-  local orc_label=" ${name} "
+  # Hook: status bar context — vimbridge when nvim window active, else ORCH pill + full right bar.
   local vimbridge_l="#(cat \#{socket_path}-\#{session_id}-vimbridge)"
   local vimbridge_r="#(cat \#{socket_path}-\#{session_id}-vimbridge-R)"
   tmux -L aid set-hook -t "$session" after-select-window \
     "if-shell '[ \"#{window_name}\" = nvim ]' \
        'set-option -t $(printf '%q' "$session") status-left $(printf '%q' "$vimbridge_l") ; set-option -t $(printf '%q' "$session") status-right $(printf '%q' "$vimbridge_r")' \
-       'set-option -t $(printf '%q' "$session") status-left $(printf '%q' "$orc_label") ; set-option -t $(printf '%q' "$session") status-right \"\"'"
+       'set-option -t $(printf '%q' "$session") status-left $(printf '%q' "$orch_status_l") ; set-option -t $(printf '%q' "$session") status-right $(printf '%q' "$orch_status_r")'"
 
   dbg "session $session ready"
   _spawn_log "$debug_log" "session=${session} ready — calling _attach_or_switch"

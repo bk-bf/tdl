@@ -43,4 +43,8 @@ set -g status-right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=$
 set -g window-status-style          ""
 set -g window-status-format         ""
 set -g window-status-current-format ""
+
+# Orchestrator window-0 status bar (same style as above but with ORCH pill instead of nvim mode).
+set -g @aid_orch_status_left  "#[fg=${cursor_fg},bg=${purple},bold] ORCH #[fg=${purple},bg=${blue},none]  "
+set -g @aid_orch_status_right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=${lavender},bg=${blue}]#[fg=${fg},bg=${lavender}] %H:%M #[fg=${purple},bg=${lavender}]#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
 EOF
