@@ -140,24 +140,17 @@ async function orcPort(session: string): Promise<number> {
 
 /** Read conversations from the opencode SQLite DB (works even when opencode is offline). */
 function convosFromDb(repoPath: string): OrcConversation[] {
+  // Without a repo path we can't scope the query — refuse to return everything.
+  if (!repoPath) return [];
   const dbPath = join(AID_DATA, "opencode/opencode.db");
   try {
     const db = new Database(dbPath, { readonly: true, create: false });
     try {
-      let rows: Array<{ id: string; title: string; directory: string; time_updated: number }>;
-      if (repoPath) {
-        rows = db
-          .query<{ id: string; title: string; directory: string; time_updated: number }, [string]>(
-            "SELECT id, title, directory, time_updated FROM session WHERE time_archived IS NULL AND directory = ? ORDER BY time_updated DESC",
-          )
-          .all(repoPath);
-      } else {
-        rows = db
-          .query<{ id: string; title: string; directory: string; time_updated: number }, []>(
-            "SELECT id, title, directory, time_updated FROM session WHERE time_archived IS NULL ORDER BY time_updated DESC",
-          )
-          .all();
-      }
+      const rows = db
+        .query<{ id: string; title: string; directory: string; time_updated: number }, [string]>(
+          "SELECT id, title, directory, time_updated FROM session WHERE time_archived IS NULL AND directory = ? ORDER BY time_updated DESC",
+        )
+        .all(repoPath);
       return rows.map((r) => ({
         id: r.id,
         title: r.title,
@@ -318,11 +311,13 @@ async function buildList(): Promise<ListItem[]> {
   const sessionData: SessionData[] = await Promise.all(
     liveSessions.map(async (session): Promise<SessionData> => {
       const m = metaFor(session);
-      const repo = m?.repo_path ?? "";
-      const [port, activeConvId] = await Promise.all([
+      const [port, activeConvId, orcRepoRaw] = await Promise.all([
         orcPort(session),
         orcActiveConv(session),
+        tmuxOutput("show-environment", "-t", session, "AID_ORC_REPO"),
       ]);
+      const orcRepoMatch = orcRepoRaw.match(/AID_ORC_REPO=(.+)/);
+      const repo = orcRepoMatch ? orcRepoMatch[1].trim() : (m?.repo_path ?? "");
       const convs = await orcConversations(port, repo);
       return { session, port, convs, activeConvId };
     }),
