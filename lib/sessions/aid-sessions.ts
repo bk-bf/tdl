@@ -371,11 +371,50 @@ function stripAnsi(s: string): string {
   return s.replace(/\x1b\[[0-9;]*[mGKHABCDJsuhl?]/g, "");
 }
 
-/** Right-align `right` within `totalCols`, given the visible length of `left`. */
+/**
+ * Hard-clamp a string to `maxCols` visible characters.
+ * Walks the string rune-by-rune, skipping ANSI escape sequences (they are
+ * zero-width), counting printable chars. Once we hit `maxCols` printable
+ * chars we stop and append reset so colours don't bleed into the next line.
+ */
+function clampLine(s: string, maxCols: number): string {
+  if (maxCols <= 0) return A.reset;
+  let visible = 0;
+  let i = 0;
+  let out = "";
+  // eslint-disable-next-line no-control-regex
+  const ESC_RE = /^\x1b\[[0-9;]*[mGKHABCDJsuhl?]/;
+  while (i < s.length) {
+    // Check for ESC sequence — consume it verbatim (zero width)
+    const rest = s.slice(i);
+    const m = rest.match(ESC_RE);
+    if (m) {
+      out += m[0];
+      i += m[0].length;
+      continue;
+    }
+    if (visible >= maxCols) break;
+    out += s[i];
+    visible++;
+    i++;
+  }
+  return out + A.reset;
+}
+
+/**
+ * Right-align `right` within `totalCols`.
+ * If there isn't enough room for both sides, the right part is dropped
+ * and the left is clamped to `totalCols`.
+ */
 function rightAlign(left: string, right: string, totalCols: number): string {
-  const leftLen = stripAnsi(left).length;
+  const leftLen  = stripAnsi(left).length;
   const rightLen = stripAnsi(right).length;
-  const gap = Math.max(1, totalCols - leftLen - rightLen);
+  const needed   = leftLen + 1 + rightLen;
+  if (needed > totalCols) {
+    // Not enough room — just return left clamped to totalCols
+    return clampLine(left, totalCols);
+  }
+  const gap = totalCols - leftLen - rightLen;
   return left + " ".repeat(gap) + right;
 }
 
@@ -529,14 +568,12 @@ function buildFrame(): string[] {
   const lines: string[] = [];
 
   // ── Row 1: title bar — full-width navy background ──────────────────────────
-  const sessionLabel = AID_ORC_NAME ? ` aid@${AID_ORC_NAME}` : " aid sessions";
-  const titleRight   = " sessions ";
+  // Uses rightAlign so the right label is dropped when cols is too narrow.
+  // clampLine in render() guarantees the line never wraps regardless.
+  const sessionLabel = AID_ORC_NAME ? ` aid@${AID_ORC_NAME}` : " aid";
   const titleLeft    = `${A.bgTitleBar}${A.fgBrCyan}${A.bold}${sessionLabel}`;
-  const titleRightFmt = `${A.bgTitleBar}${A.dim}${A.fgGray}${titleRight}${A.reset}`;
-  const titlePad     = " ".repeat(
-    Math.max(0, cols - stripAnsi(sessionLabel).length - stripAnsi(titleRight).length)
-  );
-  lines.push(`${titleLeft}${titlePad}${titleRightFmt}`);
+  const titleRight   = `${A.bgTitleBar}${A.dim}${A.fgGray} sessions ${A.reset}`;
+  lines.push(rightAlign(titleLeft, titleRight, cols));
 
   // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
   const bodyRows = Math.max(1, rows - 4);
@@ -626,16 +663,18 @@ function buildFrame(): string[] {
 }
 
 function render(): void {
+  const { cols } = termSize();
   const frame = buildFrame();
   const buf: string[] = [];
 
   // Hide cursor, clear screen, then write every line using absolute positioning.
   // Never use \n — that would advance the scrollback buffer and cause lines to
   // pile up below the visible area on refresh.
+  // Every line is hard-clamped to `cols` visible chars so nothing ever wraps.
   buf.push(A.hideCursor);
   buf.push(A.clearScreen);
   for (let i = 0; i < frame.length; i++) {
-    buf.push(A.moveTo(i + 1) + frame[i]);
+    buf.push(A.moveTo(i + 1) + clampLine(frame[i], cols));
   }
 
   safeWrite(buf.join(""));
