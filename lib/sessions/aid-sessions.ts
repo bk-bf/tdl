@@ -767,8 +767,8 @@ function handleRenameKey(key: Buffer): void {
     doRename(session, input);
     return;
   }
-  // Escape / Ctrl-C — cancel
-  if (key[0] === 0x1b || key[0] === 0x03) {
+  // Escape / Ctrl-C — cancel (bare ESC only; multi-byte ESC sequences are arrow keys etc.)
+  if ((key[0] === 0x1b && key.length === 1) || key[0] === 0x03) {
     state.mode = { type: "nav" };
     render();
     return;
@@ -803,18 +803,19 @@ function handleDeleteKey(key: Buffer): void {
 function handleNavKey(key: Buffer): void {
   const ch = key.toString("utf-8");
 
-  // q / Escape / Ctrl-C → quit
-  if (ch === "q" || key[0] === 0x1b || key[0] === 0x03) {
-    cleanup();
-    process.exit(0);
-  }
-
   // Arrow keys: ESC [ A (up) / B (down) / 5~ (page-up) / 6~ (page-down)
+  // Must be checked BEFORE the bare-ESC quit so ESC sequences aren't swallowed.
   if (key[0] === 0x1b && key[1] === 0x5b) {
     if (key[2] === 0x41) { moveCursor(-1); return; }  // up
     if (key[2] === 0x42) { moveCursor(1); return; }   // down
     if (key[2] === 0x35) { moveCursor(-10); return; } // page-up  (ESC[5~)
     if (key[2] === 0x36) { moveCursor(10); return; }  // page-down (ESC[6~)
+  }
+
+  // q / bare Escape / Ctrl-C → quit
+  if (ch === "q" || (key[0] === 0x1b && key.length === 1) || key[0] === 0x03) {
+    cleanup();
+    process.exit(0);
   }
 
   // vim-style navigation
