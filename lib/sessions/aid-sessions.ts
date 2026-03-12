@@ -331,6 +331,23 @@ async function orcDeleteConversation(port: number, convId: string): Promise<void
 }
 
 /**
+ * Resolve the tmux client tty to use with switch-client -c.
+ * Prefers AID_CALLER_CLIENT (set by orchestrator.sh when available).
+ * Falls back to querying which client is currently attached to our session —
+ * necessary when the nav process was spawned via respawn-pane and stdin is
+ * not a tty, so AID_CALLER_CLIENT is empty.
+ */
+async function resolveClient(): Promise<string> {
+  if (AID_CALLER_CLIENT) return AID_CALLER_CLIENT;
+  if (!TMUX_PANE) return "";
+  const curSession = await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}").catch(() => "");
+  if (!curSession) return "";
+  // list-clients prints one line per client: "<tty> <session>"
+  const raw = await tmuxOutput("list-clients", "-t", curSession, "-F", "#{client_name}").catch(() => "");
+  return raw.trim().split("\n")[0]?.trim() ?? "";
+}
+
+/**
  * Select a conv in a foreign aid session by switching the tmux client to
  * that session.  Tells the foreign opencode to show the conv via HTTP first,
  * then jumps the terminal there with switch-client.
@@ -346,8 +363,9 @@ async function switchToForeignConv(
     await tmuxRun("set-environment", "-t", foreignSession, "AID_ORC_ACTIVE_CONV", convId);
   }
   // Jump the terminal to the foreign session.
-  if (AID_CALLER_CLIENT) {
-    await tmuxRun("switch-client", "-c", AID_CALLER_CLIENT, "-t", foreignSession);
+  const client = await resolveClient();
+  if (client) {
+    await tmuxRun("switch-client", "-c", client, "-t", foreignSession);
   } else {
     await tmuxRun("switch-client", "-t", foreignSession);
   }
@@ -998,8 +1016,9 @@ function currentItem(): ListItem | undefined {
 
 async function switchToSession(session: string): Promise<void> {
   dbg("ACTN", `switch-client -> ${session}`);
-  if (AID_CALLER_CLIENT) {
-    await tmuxRun("switch-client", "-c", AID_CALLER_CLIENT, "-t", session);
+  const client = await resolveClient();
+  if (client) {
+    await tmuxRun("switch-client", "-c", client, "-t", session);
   } else {
     await tmuxRun("switch-client", "-t", session);
   }
