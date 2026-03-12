@@ -111,11 +111,30 @@ interface OrcConversation {
   directory?: string;
 }
 
+/** Compute the deterministic opencode port for a session name (mirrors orchestrator.sh). */
+async function computePort(session: string): Promise<number> {
+  const name = session.replace(/^aid@/, "");
+  try {
+    const proc = Bun.spawn(["sh", "-c", `printf '%s' ${JSON.stringify(name)} | cksum | cut -d' ' -f1`], {
+      stdout: "pipe", stderr: "ignore",
+    });
+    const out = (await new Response(proc.stdout).text()).trim();
+    await proc.exited;
+    const crc = parseInt(out, 10);
+    if (isNaN(crc)) return 0;
+    return 4200 + (crc % 1000);
+  } catch {
+    return 0;
+  }
+}
+
 async function orcPort(session: string): Promise<number> {
   const val = await tmuxOutput("show-environment", "-t", session, "AID_ORC_PORT");
   const m = val.match(/AID_ORC_PORT=(\d+)/);
-  if (!m) return 0;
-  return parseInt(m[1], 10);
+  if (m) return parseInt(m[1], 10);
+  // Not set in tmux env — session wasn't spawned by orchestrator.sh yet, but
+  // the port is deterministic so compute it from the session name.
+  return computePort(session);
 }
 
 async function orcConversations(
