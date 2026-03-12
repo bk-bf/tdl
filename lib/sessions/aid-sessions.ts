@@ -26,6 +26,7 @@ const AID_DIR = process.env.AID_DIR ?? "";
 const AID_DATA = process.env.AID_DATA ?? "";
 const AID_DEBUG_LOG = process.env.AID_DEBUG_LOG ?? "";
 const TMUX_PANE = process.env.TMUX_PANE ?? "";
+const AID_ORC_NAME = process.env.AID_ORC_NAME ?? "";   // short session name (e.g. "aid")
 let AID_CALLER_CLIENT = process.env.AID_CALLER_CLIENT ?? "";
 
 if (!AID_DIR || !AID_DATA) {
@@ -221,56 +222,64 @@ function relativeTime(epochMs: number): string {
 }
 
 async function buildList(): Promise<ListItem[]> {
-  // Live orchestrator sessions — use field-exact match on column 2 == "orchestrator"
-  const rawSessions = await tmuxOutput(
-    "list-sessions",
-    "-F",
-    "#{session_last_attached} #{@aid_mode} #{session_name}",
-  );
+  // ── Phase 1: all tmux queries in parallel ─────────────────────────────────
+  const [rawSessions, currentSession] = await Promise.all([
+    tmuxOutput(
+      "list-sessions",
+      "-F",
+      "#{session_last_attached} #{@aid_mode} #{session_name}",
+    ),
+    TMUX_PANE
+      ? tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}")
+      : Promise.resolve(""),
+  ]);
 
   const liveSessions: string[] = rawSessions
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
-    .filter((l) => {
-      const parts = l.split(/\s+/);
-      return parts[1] === "orchestrator";
-    })
+    .filter((l) => l.split(/\s+/)[1] === "orchestrator")
     .map((l) => l.trim().split(/\s+/)[2])
     .filter(Boolean)
     .sort();
 
   const meta = readMeta();
   const liveSet = new Set(liveSessions);
+  const deadSessions = meta.map((m) => m.tmux_session).filter((s) => !liveSet.has(s));
 
-  // Dead sessions: in metadata but not in tmux
-  const deadSessions = meta
-    .map((m) => m.tmux_session)
-    .filter((s) => !liveSet.has(s));
+  // ── Phase 2: per-session HTTP + tmux queries — all sessions in parallel ───
+  interface SessionData {
+    session: string;
+    port: number;
+    convs: OrcConversation[];
+    activeConvId: string;
+  }
 
-  // Current session (the one this navigator is running inside)
-  const currentSession = TMUX_PANE
-    ? await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}")
-    : "";
+  const sessionData: SessionData[] = await Promise.all(
+    liveSessions.map(async (session): Promise<SessionData> => {
+      const m = metaFor(session);
+      const repo = m?.repo_path ?? "";
+      const [port, activeConvId] = await Promise.all([
+        orcPort(session),
+        orcActiveConv(session),
+      ]);
+      const convs = await orcConversations(port, repo);
+      return { session, port, convs, activeConvId };
+    }),
+  );
 
+  // ── Phase 3: assemble items list ──────────────────────────────────────────
   const items: ListItem[] = [];
   let first = true;
 
-  for (const session of liveSessions) {
+  for (const { session, convs, activeConvId } of sessionData) {
     if (!first) items.push({ kind: { type: "sep" }, selectable: false });
     first = false;
 
-    const isCurrent = session === currentSession;
     items.push({
-      kind: { type: "session", session, isCurrent },
+      kind: { type: "session", session, isCurrent: session === currentSession },
       selectable: true,
     });
-
-    const m = metaFor(session);
-    const repo = m?.repo_path ?? "";
-    const port = await orcPort(session);
-    const convs = await orcConversations(port, repo);
-    const activeConvId = await orcActiveConv(session);
 
     if (convs.length === 0) {
       items.push({ kind: { type: "empty", reason: "no-convs" }, selectable: false });
@@ -520,11 +529,14 @@ function buildFrame(): string[] {
   const lines: string[] = [];
 
   // ── Row 1: title bar — full-width navy background ──────────────────────────
-  const titleText = " aid sessions";
-  const titlePad  = " ".repeat(Math.max(0, cols - stripAnsi(titleText).length));
-  lines.push(
-    `${A.bgTitleBar}${A.fgBrCyan}${A.bold}${titleText}${titlePad}${A.reset}`
+  const sessionLabel = AID_ORC_NAME ? ` aid@${AID_ORC_NAME}` : " aid sessions";
+  const titleRight   = " sessions ";
+  const titleLeft    = `${A.bgTitleBar}${A.fgBrCyan}${A.bold}${sessionLabel}`;
+  const titleRightFmt = `${A.bgTitleBar}${A.dim}${A.fgGray}${titleRight}${A.reset}`;
+  const titlePad     = " ".repeat(
+    Math.max(0, cols - stripAnsi(sessionLabel).length - stripAnsi(titleRight).length)
   );
+  lines.push(`${titleLeft}${titlePad}${titleRightFmt}`);
 
   // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
   const bodyRows = Math.max(1, rows - 4);
@@ -1049,30 +1061,43 @@ async function pruneDead(): Promise<void> {
 async function boot(): Promise<void> {
   dbg("INIT", `aid-sessions.ts starting (pid=${process.pid} pane=${TMUX_PANE})`);
 
-  // Resolve caller client tty
+  // Resolve caller client tty + self-heal session tag — run in parallel
+  const initTasks: Promise<unknown>[] = [];
+
   if (!AID_CALLER_CLIENT && TMUX_PANE) {
-    AID_CALLER_CLIENT = await tmuxOutput(
-      "display-message", "-t", TMUX_PANE, "-p", "#{client_tty}",
-    ).catch(() => "");
+    initTasks.push(
+      tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{client_tty}")
+        .catch(() => "")
+        .then((tty) => { if (tty) AID_CALLER_CLIENT = tty; }),
+    );
   }
   if (!AID_CALLER_CLIENT) {
-    try {
-      const ttyProc = Bun.spawn(["tty"], { stdout: "pipe", stderr: "ignore" });
-      AID_CALLER_CLIENT = (await new Response(ttyProc.stdout).text()).trim();
-    } catch { /* ignore */ }
+    initTasks.push(
+      (async () => {
+        try {
+          const ttyProc = Bun.spawn(["tty"], { stdout: "pipe", stderr: "ignore" });
+          AID_CALLER_CLIENT = (await new Response(ttyProc.stdout).text()).trim();
+        } catch { /* ignore */ }
+      })(),
+    );
   }
-  dbg("INIT", `caller client: ${AID_CALLER_CLIENT || "<none>"}`);
 
   // Self-heal: ensure own session is tagged as orchestrator
   if (TMUX_PANE) {
-    const selfSession = await tmuxOutput(
-      "display-message", "-t", TMUX_PANE, "-p", "#{session_name}",
-    ).catch(() => "");
-    if (selfSession) {
-      await tmuxRun("set-option", "-t", selfSession, "@aid_mode", "orchestrator");
-      dbg("INIT", `self-heal: tagged ${selfSession} as orchestrator`);
-    }
+    initTasks.push(
+      tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}")
+        .catch(() => "")
+        .then(async (selfSession) => {
+          if (selfSession) {
+            await tmuxRun("set-option", "-t", selfSession, "@aid_mode", "orchestrator");
+            dbg("INIT", `self-heal: tagged ${selfSession} as orchestrator`);
+          }
+        }),
+    );
   }
+
+  await Promise.all(initTasks);
+  dbg("INIT", `caller client: ${AID_CALLER_CLIENT || "<none>"}`);
 
   // Prune dead sessions from metadata (background, non-blocking)
   pruneDead().catch(() => { });
@@ -1093,6 +1118,25 @@ async function boot(): Promise<void> {
 
   // First data load
   await refresh();
+
+  // Early-retry: if opencode wasn't ready yet (0 convs), poll quickly for up
+  // to 3 s before settling into the normal 5 s interval.  This avoids a blank
+  // "no conversations yet" for the full first interval when the process starts
+  // before opencode's HTTP API is up.
+  const hasConvs = () =>
+    state.items.some((i) => i.kind.type === "conv");
+  if (!hasConvs()) {
+    dbg("INIT", "no convs yet — starting early-retry loop");
+    const earlyStop = Date.now() + 3000;
+    const earlyTimer = setInterval(async () => {
+      if (hasConvs() || Date.now() >= earlyStop) {
+        clearInterval(earlyTimer);
+        dbg("INIT", "early-retry loop done");
+        return;
+      }
+      if (state.mode.type === "nav") await refresh().catch(() => {});
+    }, 500);
+  }
 
   // Auto-refresh every 5s (only while in nav mode to avoid interrupting rename/delete)
   refreshTimer = setInterval(() => {
