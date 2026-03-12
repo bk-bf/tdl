@@ -370,10 +370,13 @@ async function switchToForeignConv(
   }
   // Jump the terminal to the foreign session.
   const client = await resolveClient();
+  dbg("SWITCH", `client=${client || "<none>"} foreignSession=${foreignSession}`);
   if (client) {
-    await tmuxRun("switch-client", "-c", client, "-t", foreignSession);
+    const rc = await tmuxRun("switch-client", "-c", client, "-t", foreignSession);
+    dbg("SWITCH", `switch-client -c ${client} -t ${foreignSession} rc=${rc}`);
   } else {
-    await tmuxRun("switch-client", "-t", foreignSession);
+    const rc = await tmuxRun("switch-client", "-t", foreignSession);
+    dbg("SWITCH", `switch-client -t ${foreignSession} (no client) rc=${rc}`);
   }
   return true;
 }
@@ -1037,6 +1040,7 @@ async function loadConversation(convId: string, session: string): Promise<void> 
   const curSession = TMUX_PANE
     ? await tmuxOutput("display-message", "-t", TMUX_PANE, "-p", "#{session_name}")
     : "";
+  dbg("CONV", `curSession=${curSession || "<empty>"} TMUX_PANE=${TMUX_PANE || "<empty>"} foreign=${curSession && session !== curSession}`);
 
   // Conv belongs to a different session — tell that opencode to select the
   // conv then jump the client there.
