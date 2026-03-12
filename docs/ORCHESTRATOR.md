@@ -8,30 +8,28 @@ It replaces the standard aid layout (sidebar + nvim + opencode in one session) w
 
 ```
 ┌─────────────────────┬────────────────────────────────────────┐
-│  aid-sessions (fzf) │                                        │
+│  aid@aid  sessions  │                                        │
 │                     │           opencode TUI                 │
-│  aid@project-a ●    │                                        │
-│    > Conv title      │                                        │
-│      Other conv      │                                        │
+│ ❯ aid          live │                                        │
+│  ├─ ● Conv title    │                                        │
+│  └─ ○ Other conv    │                                        │
 │                     │                                        │
-│  aid@project-b      │                                        │
-│    Conv title        │                                        │
 ├─────────────────────┴────────────────────────────────────────┤
 │  debug log pane  (only with -d / AID_DEBUG=1)                │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 Each `aid@<name>` tmux session contains:
-- **Left pane** (~25%): `aid-sessions` — the fzf navigator
+- **Left pane** (~25%): `aid-sessions.ts` — the TypeScript/Bun navigator
 - **Right pane** (~75%): `opencode` — the AI TUI
 - **Bottom pane** (full width, debug mode only): `aid-sessions-debug` — live log viewer
 
 ## Entry point
 
 ```
-aid --mode orchestrator          launch / attach
-aid -d --mode orchestrator       same, with debug pane + log
-aid --branch <b> --mode orchestrator   run from a feature branch install
+aid --mode orchestrator                      launch / attach
+aid -d --mode orchestrator                   same, with debug pane + log
+aid --branch <b> --mode orchestrator         run from a feature branch install
 ```
 
 `aid.sh` consumes `--mode` in its pre-pass and dispatches to
@@ -54,7 +52,7 @@ aid.sh --mode orchestrator
               ├── [debug] split bottom 25% → dbg_pane (sleep infinity placeholder)
               ├── split right 75% → orc_pane (sleep infinity placeholder)
               ├── respawn orc_pane  → opencode --port <AID_ORC_PORT> <repo_path>
-              ├── respawn nav_pane  → aid-sessions
+              ├── respawn nav_pane  → aid-sessions.ts
               ├── [debug] respawn dbg_pane → aid-sessions-debug
               ├── set-option @aid_mode orchestrator  (for session discovery)
               ├── _meta_write <name> <repo_path>     (persist to sessions.json)
@@ -64,7 +62,7 @@ aid.sh --mode orchestrator
 
 ### Session naming
 
-Session name: `aid@<sanitised-basename-of-repo>`.  Numeric suffix appended if
+Session name: `aid@<sanitised-basename-of-repo>`. Numeric suffix appended if
 the name already exists (`aid@project`, `aid@project2`, …).
 
 ### `_attach_or_switch`
@@ -75,7 +73,7 @@ when called from a pane subprocess (e.g. the `n` key in `aid-sessions`).
 Falls back to plain `switch-client -t` when the var is absent, and
 `tmux attach` when not inside tmux at all.
 
-`AID_CALLER_CLIENT` is resolved once by `aid-sessions` at startup (from
+`AID_CALLER_CLIENT` is resolved once by `aid-sessions.ts` at startup (from
 `#{client_tty}` of the nav pane, or `tty(1)` as fallback) and exported so all
 subprocesses inherit it.
 
@@ -115,7 +113,7 @@ can be resurrected.
 }
 ```
 
-### API (sourced by `orchestrator.sh` and `aid-sessions`)
+### API (sourced by `orchestrator.sh`)
 
 | Function | Purpose |
 |---|---|
@@ -129,195 +127,144 @@ All functions degrade gracefully when `jq` is absent (return 0, print nothing).
 
 ### Dead session prune
 
-At `aid-sessions` startup, `_prune_dead_sessions` removes entries from
+At `aid-sessions.ts` startup, `pruneDead()` removes entries from
 `sessions.json` for sessions that no longer exist in tmux. Runs once in the
-background so it does not delay the initial fzf render.
+background so it does not delay the initial render.
 
-## `aid-sessions` — the navigator
+## `aid-sessions.ts` — the navigator
 
-`lib/sessions/aid-sessions` is the persistent left-pane process. It runs a
-`while true` fzf loop — fzf is restarted in-place after every action rather
-than `exec`-ing a new process, so the background ticker keeps running against
-the same `--listen` port for the lifetime of the session.
+`lib/sessions/aid-sessions.ts` is a self-contained Bun/TypeScript process that
+owns the entire left pane. It renders directly to the terminal via ANSI escape
+codes (alternate screen buffer, absolute cursor positioning), handles raw key
+input, and calls the opencode HTTP API and tmux directly via `Bun.spawn` /
+`fetch`.
+
+There is no fzf dependency. The navigator is a persistent process for the
+lifetime of the tmux session.
+
+### Rendering
+
+- **Alternate screen buffer** — no scrollback leak; `\x1b[?1049h` on start,
+  `\x1b[?1049l` on exit.
+- **Absolute cursor positioning** — every render clears the screen and redraws
+  all lines via `\x1b[row;1H`. No `\n` is ever written (prevents scrollback
+  accumulation).
+- **`clampLine(s, cols)`** — hard-clamps every rendered line to the pane width
+  by walking rune-by-rune and skipping ANSI escape sequences (zero-width).
+  Nothing ever wraps regardless of terminal size.
+- **Colors** — loaded at runtime from `nvim/lua/palette.lua` via `loadPalette()`
+  (regex parses `M.key = "#rrggbb"` lines). No color values are hardcoded in
+  the navigator itself.
+
+### Visual structure
+
+```
+ aid@aid          sessions    ← title bar (row 1): blue bg, full-width
+❯ aid          live           ← session header: purple caret when current
+ ├─ ● Conv title    2m ago    ← active conv: purple ●, bold white title
+ └─ ○ Other conv    5m ago    ← inactive conv: dim gray ○
+```
+
+- **Selection**: purple `▌` left-edge bar + very subtle bg tint. The bar is the
+  primary cursor signal so bold/color on the row text is never obscured.
+- **`●`/`○` markers**: purple filled = currently active in opencode; dim gray
+  hollow = inactive.
+- **Timestamps**: dim gray, right-aligned. Dropped gracefully when the pane is
+  too narrow.
+- **Tree lines** (`├─`/`└─`): lavender, connecting conv rows to their session.
+
+### Sync strategy
+
+Two-tier approach to keep the UI responsive:
+
+| Tier | Trigger | What it does | Latency |
+|---|---|---|---|
+| **Optimistic patch** | Immediately on action | Mutates `state.items` in-place and calls `render()` | ~0ms |
+| **Fast active sync** (`refreshActiveConvs`) | Every cursor move (↑↓jk, page) | Re-queries `AID_ORC_ACTIVE_CONV` from tmux env per session, patches `active` flags | ~1 tmux RTT per session |
+| **Full refresh** (`refresh`) | After actions that change the list; 5s interval safety net | Rebuilds entire item list from tmux + opencode HTTP | ~1–2 full RTTs |
+
+Optimistic patches are applied for:
+- **Conv switch** (`Enter`): `active` flags flipped instantly before any tmux/HTTP calls.
+- **Delete** (`dy`): item removed from list instantly; stranded `sep` rows cleaned up.
+- **Rename** (`r`): title patched in-place instantly; reverts to full refresh (which re-reads from server) on HTTP failure.
+- **New conversation** (`n`): `new conversation…` placeholder inserted at top of session group instantly; replaced with real item after HTTP POST returns.
 
 ### Keys
 
 | Key | Action |
 |---|---|
-| `Enter` | Session header: switch tmux client to that session. Conv row: load conversation via HTTP API. Dead session: resurrect. |
-| `n` | New session from `$PWD` (calls `orchestrator.sh --new`) |
-| `r` | Rename focused session (tmux `display-popup` prompt) |
-| `d` | Delete focused item (confirm via `aid-popup` menu) |
-| `ctrl-r` | Manual refresh |
-| `q` / `esc` | Quit (collapse nav pane) |
+| `↑` / `k` | Move cursor up |
+| `↓` / `j` | Move cursor down |
+| `PgUp` / `PgDn` | Move cursor ±10 rows |
+| `Enter` | Conv row: load conversation. Session header: no-op (already current). Dead session: resurrect. |
+| `n` | New conversation in current session |
+| `r` | Inline rename (conv title or session name) |
+| `d` | Inline delete with `y`/`n` confirm |
+| `Ctrl-R` | Force full refresh |
+| `q` / `Esc` / `Ctrl-C` | Quit |
 
-### fzf configuration
-
-| Option | Value | Reason |
-|---|---|---|
-| `--listen=<port>` | random 49200–49999 | Background ticker POSTs reload commands here |
-| `--no-input` | — | Disable text search; all keys are bound actions |
-| `--sync` | — | fzf waits for full stdin before firing `start:`, so `pos(N)` works correctly |
-| `--accept-nth=2` | — | Tag field (field 2, tab-delimited) is the fzf output; display field (field 1) is shown |
-| `--with-nth=1` | — | Only display field 1 |
-
-### Startup sequence (per fzf loop iteration)
+### Conversation loading
 
 ```
-1. eval "$_lst" in shell → _initial_list (pre-populates fzf stdin, no blank flash)
-2. printf list | fzf --listen --sync ...
-     start: unbind(enter,n,r,d) + pos(_start_pos)
-            ↑ unbind prevents stale tty newline (from the Enter that launched aid)
-              from firing accept before the list loads
-     load:  rebind(enter,n,r,d)
-            ↑ fires after list is fully loaded; any buffered input has been consumed
-3. fzf exits → read _key from _FZF_KEY_FILE, _tag from _output
-4. dispatch on _key / _tag
-5. continue (restart fzf) or break (q/esc)
+loadConversation(convId, session)
+  1. Optimistically patch active flags in state.items → render()
+  2. orcPort(session)  — tmux show-environment AID_ORC_PORT
+  3. tmux set-environment AID_ORC_ACTIVE_CONV=<convId>
+  4. POST /tui/select-session {"sessionID":"<convId>"}  → opencode switches TUI
+  5. if current session ≠ target: switch-client -c $AID_CALLER_CLIENT -t target
 ```
 
-### Key dispatch mechanism
+### Rename
 
-`enter`, `n`, `r`, `d` all use `execute-silent(...)+accept`:
-- `execute-silent` runs first, writes `FZF_POS` to `_FZF_POS_FILE` and the
-  key name to `_FZF_KEY_FILE` — this is the only way to capture `FZF_POS`
-  reliably (it is **not** available in the parent shell after fzf exits, and
-  is **not** set in `execute-silent` for `--expect` keys).
-- `+accept` causes fzf to exit and emit the focused item's tag (field 2 via
-  `--accept-nth=2`) as `_output`.
-- After fzf exits, the shell reads `_key` from `_FZF_KEY_FILE` and `_tag`
-  from `_output`.
-
-`esc`/`q` use `+abort` — fzf exits with rc=1, `|| true` suppresses the error,
-`_output` and `_key` are both empty, the loop breaks.
-
-### Cursor position preservation
-
-`_start_pos` is set from `_FZF_POS_FILE` after each fzf exit and passed to
-`pos(N)` in the next iteration's `start:` bind. Defaults to 1. Reset to 1
-after `n` (new session) so the new entry is visible at the top.
-
-### Auto-refresh ticker
-
-A single background subshell fires every 5 seconds (with an immediate tick
-at +2s after startup):
-
-```bash
-curl -sf -X POST http://127.0.0.1:<fzf_port> -d "transform:<reload_cmd> tick=N"
-```
-
-`transform:` causes fzf to run the command and interpret its stdout as a fzf
-action string. The reload helper (`aid-sessions-reload`) generates
-`reload-sync(cat <tmpfile>; rm -f <tmpfile>)+pos(<FZF_POS>)`.
-
-The ticker is spawned once before the loop. Port is constant. `EXIT` trap
-kills it on true exit.
-
-### Conversation loading (`_load_conversation`)
+Inline input field replaces the cursor row. `Enter` confirms, `Esc` cancels.
 
 ```
-_load_conversation <conv_id> <tmux_session>
-  1. read AID_ORC_PORT from tmux session environment
-  2. set-environment AID_ORC_ACTIVE_CONV=<conv_id>  (best-effort; failure logged, not fatal)
-  3. curl POST /tui/select-session {"sessionID":"<conv_id>"}  → opencode switches TUI
-  4. if current tmux session ≠ target: _switch_to_session target
+Conv rename:
+  1. Patch title in state.items → render()  (optimistic)
+  2. GET orcPort → PATCH /session/<convId> {"title":"<new>"}
+  3. On failure: setStatus("rename failed") + full refresh
+
+Session rename:
+  1. tmux has-session check (bail if new name already exists)
+  2. tmux rename-session old new
+  3. writeMeta (update sessions.json)
+  4. full refresh
 ```
 
-### Rename (`_do_rename`)
+### Delete
 
 ```
-_do_rename <tag>
-  1. extract session name from tag (strips conv:/session:/dead: prefixes)
-  2. display-popup -b double -c $AID_CALLER_CLIENT  → bash read -e -i <old_name>
-  3. sanitise input (tr -cs '[:alnum:]-_.' '-')
-  4. tmux rename-session old new
-  5. _meta_write new_name; _meta_remove old_session
+Conv delete (dy):
+  1. Remove item from state.items, clamp cursor → render()  (optimistic)
+  2. DELETE /session/<convId>
+  3. full refresh
+
+Session delete (dy):
+  1. Remove session + all its convs from state.items → render()  (optimistic)
+  2. GET /session → DELETE each conv
+  3. full refresh
+
+Dead session delete (dy):
+  1. Remove item → render()  (optimistic)
+  2. writeMeta (remove from sessions.json)
+  3. full refresh
 ```
 
-The popup uses `-b double` (border-lines) and `-c "$AID_CALLER_CLIENT"` (target
-the correct terminal). The `-E` flag causes the popup to close when the shell
-exits.
-
-### Delete (`_do_delete`)
+### Auto-refresh
 
 ```
-_do_delete <tag>
-  conv:*     → aid-popup confirm → curl DELETE /session/<conv_id>
-  session:*  → aid-popup confirm → curl GET /session → DELETE each id → (session stays)
-  dead:*     → same as session:* but session is already gone
+boot()
+  └── early-retry loop: polls every 500ms for 3s if 0 convs (opencode not ready yet)
+  └── setInterval(refresh, 5000)  — safety-net full refresh every 5s (nav mode only)
 ```
 
-Sessions are never killed by delete — only their opencode conversation records
-are removed via the HTTP API.
-
-## `aid-sessions-list` — list generator
-
-Generates the tab-delimited fzf input on stdout. Called twice per reload:
-once inline before fzf opens (initial render), once inside `aid-sessions-reload`
-(subsequent reloads).
-
-### Output format
-
-Each line: `DISPLAY_TEXT\tTAG`
-
-| TAG | Meaning |
-|---|---|
-| `[session:aid@<name>]` | Live session header; Enter switches to it |
-| `[dead:aid@<name>]` | Dead session (metadata present, tmux gone); Enter resurrects |
-| `[conv:<session_id>:<tmux_session>]` | Opencode conversation row |
-| `[noconv:<tmux_session>]` | Placeholder when opencode port not yet ready |
-| `[sep]` | Blank separator between sessions (not selectable) |
-
-Conversations are fetched from each session's opencode HTTP API
-(`GET /session` on `AID_ORC_PORT`), filtered to `directory == repo_path`, and
-sorted by `time.updated` descending.
-
-## `aid-sessions-reload` — reload helper
-
-Called via fzf `transform:` (from the ticker and `ctrl-r`). Reads `FZF_POS`
-and `FZF_MATCH_COUNT` from its environment (fzf sets these for `transform:`
-shells), generates the new list into a tempfile, and prints a fzf action string:
-
-```
-reload-sync(cat <tmpfile>; rm -f <tmpfile>)+pos(<FZF_POS>)
-```
-
-If the list is empty, emits `pos(<FZF_POS>)` only (suppresses reload to avoid
-wiping a good list on a transient curl failure).
-
-## `aid-sessions-action` — preview dispatcher
-
-Called by fzf `--preview` for each focused item. Renders a rich info panel:
-
-| TAG type | Preview content |
-|---|---|
-| `session:*` | Session name, live/dead status, pane count, repo, branch, git ahead/behind, `git status --short` |
-| `dead:*` | Dead marker, repo, branch, last-active timestamp |
-| `conv:*` | Conversation ID, session name, repo path |
-| `noconv:*` | "No conversations yet" message |
-
-## `aid-popup` — confirmation menu
-
-Wraps `tmux display-menu` with a clean API:
-
-```bash
-answer=$(aid-popup -t "Delete?" -- "Yes:y" "No:n")
-[[ "$answer" == "Yes" ]] && ...
-```
-
-Implementation detail: each menu item's command is a native
-`tmux set-environment -g <unique_var> <label>` call. This runs synchronously
-inside the tmux server when the item is selected, so the value is available
-immediately after `display-menu` returns — no FIFO, no `run-shell`, no timing
-race. A brief `sleep 0.15` after the menu closes lets tmux repaint the pane
-before the caller restarts fzf on top of it.
+The 5s interval is skipped while in `rename` or `delete-confirm` mode to avoid
+interrupting user input.
 
 ## `aid-sessions-debug` — log viewer
 
 Runs in the bottom pane when `AID_DEBUG=1`. Tails `AID_DEBUG_LOG` and renders
-each event with colour-coded category labels and a `+Δms` delta column. Uses
-`tail -F` piped into a `while read` loop (not `less +F`) so the pane scrolls
-automatically without user interaction.
+each event with colour-coded category labels and a `+Δms` delta column.
 
 ### Debug log format
 
@@ -325,52 +272,22 @@ automatically without user interaction.
 <unix_ms> <CATEGORY> <message>
 ```
 
-Categories and colours:
-
-| Category | Colour | Meaning |
-|---|---|---|
-| `INIT` | bold blue | Startup events |
-| `SPAWN` | bold yellow | Pane lifecycle steps from `orchestrator.sh` |
-| `STDIN` | dim green | Pre-fzf list generation |
-| `SYNC` | bold green | `reload-sync` dispatched (with label and `FZF_POS`) |
-| `LOAD` | green | fzf list fully loaded |
-| `POS` | yellow | Cursor position snapshot (`focus:` event) |
-| `KEY` | bold magenta | Raw key event |
-| `ACTN` | magenta | Higher-level action (new, rename, delete, conv load) |
-| `CONV` | bold cyan | Conversation load request |
-| `HTTP` | cyan | Ticker curl result |
-| `TICK` | dim cyan | Background ticker heartbeat |
-| `PRUNE` | yellow | Dead session cleanup |
-| `RENAME` | magenta | Rename operation |
-| `DEL` | bold red | Delete operation |
-| `ERR` | bold red | Any error |
-
-### Debug logger architecture
-
-`aid-sessions` uses an independent drain subshell as its logger:
-
-```
-_dbg_init
-  mkfifo /tmp/aid-dbg-XXXXXX  → _DBG_PIPE
-  ( trap '' HUP; while read line; do >> AID_DEBUG_LOG; done ) < _DBG_PIPE &
-  exec 9> _DBG_PIPE            ← write end held open by fd 9
-
-_dbg CAT msg  → printf to fd 9  (non-blocking, daemon drains to file)
-_dbg_close    → exec 9>&-        (EOF → daemon exits, removes pipe)
-```
-
-`trap '' HUP` makes the drain subshell survive `respawn-pane -k` (which sends
-SIGHUP to the pane process group). The drain subshell is still a child of the
-`aid-sessions` process, so it dies when the tmux session is killed
-(SIGTERM/SIGKILL from `kill-session`).
+| Category | Meaning |
+|---|---|
+| `INIT` | Startup events |
+| `SPAWN` | Pane lifecycle steps from `orchestrator.sh` |
+| `SYNC` | Full refresh start/done |
+| `KEY` | Raw key bytes received |
+| `ACTN` | Higher-level action (new conv, resurrect) |
+| `CONV` | Conversation load request |
+| `RENAME` | Rename operation |
+| `DEL` | Delete operation |
+| `PRUNE` | Dead session metadata cleanup |
+| `ERR` | Any error |
 
 ## Environment variables
 
-### Global (set by `orchestrator.sh` `_ensure_server`)
-
-Same as standard aid mode — `AID_DIR`, `AID_DATA`, `XDG_*`, `OPENCODE_CONFIG_DIR`, etc.
-
-### Session-local (set per `aid@<name>` session)
+### Session-local (set per `aid@<name>` session by `orchestrator.sh`)
 
 | Variable | Value | Purpose |
 |---|---|---|
@@ -387,33 +304,28 @@ Same as standard aid mode — `AID_DIR`, `AID_DATA`, `XDG_*`, `OPENCODE_CONFIG_D
 
 | Variable | Set by | Purpose |
 |---|---|---|
-| `AID_CALLER_CLIENT` | `aid-sessions` startup | tty of the terminal that launched aid; passed to `switch-client -c` and `display-popup -c` so popups and switches target the right screen |
+| `AID_CALLER_CLIENT` | `aid-sessions.ts` startup | tty of the terminal that launched aid; passed to `switch-client -c` so switches target the right screen |
 
 ## Key design decisions
 
-- **`while true` loop instead of `exec` restart**: fzf is restarted inside the
-  same process after every action. The background ticker is spawned once and
-  keeps running. `EXIT` trap fires correctly on true quit. (Bug 2 fix — see
-  `docs/BUGS.md`.)
+- **TypeScript/Bun rewrite of bash+fzf**: the navigator is a single
+  self-contained process with its own render loop, raw key handling, and HTTP
+  client. No fzf dependency, no subprocess-per-keypress, no IPC pipes between
+  the navigator and a background ticker.
 
-- **Pre-populate fzf stdin before open**: `eval "$_lst"` in the shell before
-  `fzf` starts; pipe output directly to fzf. No blank-flash on open; no
-  `start:reload-sync` required. (Bug 5 fix — see `docs/BUGS.md`.)
+- **Optimistic UI updates**: all mutations (switch, delete, rename, new conv)
+  patch `state.items` and call `render()` synchronously before any async I/O.
+  The subsequent HTTP/tmux call reconciles with a full `refresh()`. This makes
+  every action feel instant regardless of network/tmux latency.
 
-- **`--sync` flag**: makes fzf wait for all stdin before firing `start:`, so
-  `pos(N)` in the `start:` bind fires after the list is populated and lands on
-  the correct row.
+- **`clampLine` instead of terminal width truncation**: every rendered line is
+  clamped in-process to `process.stdout.columns` visible characters. Prevents
+  wrapping in narrow panes without relying on `stty cols` or terminal
+  capabilities.
 
-- **`unbind`/`rebind` on `start:`/`load:`**: guards against a stale `\n` from
-  the Enter keypress that launched aid being delivered to fzf before the list
-  is ready. Keys are unbound at `start:` and rebound at `load:` — the window
-  is sub-millisecond.
-
-- **`+accept` for `n`/`r`/`d` (not `--expect`)**: `FZF_POS` is available in
-  `execute-silent` when fzf exits via `+accept`, but is **not** available in
-  `execute-silent` for `--expect` keys (confirmed from debug logs). `+accept`
-  also captures the focused item's tag as `_output`, which is needed for `r`
-  and `d`.
+- **Palette loaded at runtime**: `loadPalette()` reads `nvim/lua/palette.lua`
+  once at startup. No color values are duplicated between the navigator and the
+  nvim theme — palette.lua is the single source of truth.
 
 - **Deterministic opencode port**: `4200 + cksum(name) % 1000` — no port
   scanning, no dynamic discovery, stable across session restart. The navigator
@@ -425,11 +337,4 @@ Same as standard aid mode — `AID_DIR`, `AID_DATA`, `XDG_*`, `OPENCODE_CONFIG_D
 
 - **`@aid_mode=orchestrator` session tag**: set on each session at spawn time
   so `orchestrator.sh` can list and attach to orchestrator sessions without
-  interfering with plain `aid@*` sessions that might share the same tmux server.
-
-- **`aid-popup` via `set-environment` (not FIFO)**: the earlier implementation
-  used `run-shell` + a named FIFO to pass the chosen menu item back to the
-  caller. This caused a ~9-second stall. The fix: each menu item's command is
-  a native `set-environment -g <var> <label>` call which runs synchronously
-  inside the tmux server, so the value is readable immediately after
-  `display-menu` returns.
+  interfering with plain aid sessions that might share the same tmux server.
