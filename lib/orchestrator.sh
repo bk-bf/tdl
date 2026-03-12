@@ -135,10 +135,11 @@ spawn_orc_session() {
     -x "$(tput cols)" -y "$(tput lines)"
   tmux -L aid source-file "$AID_DATA/tmux/palette.conf"
 
-  # Read palette-generated orchestrator status strings (written by gen-tmux-palette.sh).
+  # Build the orchestrator status strings from the live global palette values.
+  # Replace the "#S" session-name token in status-left with "ORCH"; mirror status-right as-is.
   local orch_status_l orch_status_r
-  orch_status_l=$(tmux -L aid show-option -gqv @aid_orch_status_left)
-  orch_status_r=$(tmux -L aid show-option -gqv @aid_orch_status_right)
+  orch_status_l=$(tmux -L aid show-option -gqv status-left | sed 's/ #S / ORCH /g')
+  orch_status_r=$(tmux -L aid show-option -gqv status-right)
 
   # Pre-seed vimbridge placeholders.
   local tmux_socket session_id

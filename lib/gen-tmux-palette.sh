@@ -27,6 +27,10 @@ end
 LUA
 )"
 
+# Powerline glyphs (Nerd Font): right-arrow U+E0B0, left-arrow U+E0B2
+PL_R=$(printf '\xee\x82\xb0')   # 
+PL_L=$(printf '\xee\x82\xb2')   # 
+
 # ── Emit palette.conf ────────────────────────────────────────────────────────
 mkdir -p "$(dirname "$OUT")"
 cat >"$OUT" <<EOF
@@ -37,14 +41,10 @@ set -g status-style          "bg=${blue} fg=${fg}"
 set -g status-left-length 90
 set -g status-right-length 90
 
-set -g status-left  "#[fg=${cursor_fg},bg=${purple},bold] #S #[fg=${purple},bg=${blue},none]  "
-set -g status-right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=${lavender},bg=${blue}]#[fg=${fg},bg=${lavender}] %H:%M #[fg=${purple},bg=${lavender}]#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
+set -g status-left  "#[fg=${cursor_fg},bg=${purple},bold] #S #[fg=${purple},bg=${blue},none]${PL_R}"
+set -g status-right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=${blue},bg=${lavender}]${PL_L}#[fg=${cursor_fg},bg=${lavender}] %H:%M #[fg=${lavender},bg=${purple}]${PL_L}#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
 
 set -g window-status-style          ""
 set -g window-status-format         ""
 set -g window-status-current-format ""
-
-# Orchestrator window-0 status bar (same style as above but with ORCH pill instead of nvim mode).
-set -g @aid_orch_status_left  "#[fg=${cursor_fg},bg=${purple},bold] ORCH #[fg=${purple},bg=${blue},none]  "
-set -g @aid_orch_status_right "#[fg=${lavender},bg=${blue}] #{pane_current_command} #[fg=${lavender},bg=${blue}]#[fg=${fg},bg=${lavender}] %H:%M #[fg=${purple},bg=${lavender}]#[fg=${cursor_fg},bg=${purple},bold] #{?client_prefix,PREFIX,#h} "
 EOF
