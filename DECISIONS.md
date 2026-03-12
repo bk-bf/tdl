@@ -14,7 +14,60 @@ Archived ADRs (superseded and no longer referenced by active work) are in `archi
 
 ## Under Consideration
 
-*(none)*
+---
+
+### ADR-016: True in-terminal session switching — deferred research
+
+**Date**: 2026-03-12
+**Status**: Under Consideration — deferred; active workaround in place
+
+**Context**: In `aid --mode orchestrator`, pressing Enter on a conversation owned by a
+foreign `aid@*` session should ideally switch the *same* terminal window to that session
+— no new window, no workspace jump — just `tmux switch-client` seamlessly from nav to
+the target session.
+
+**Why it does not work today**: The nav pane is spawned via `tmux respawn-pane`, so
+its stdin is not a tty. `#{client_tty}` returns empty. `AID_CALLER_CLIENT` (the env var
+that carries the calling terminal's tty to `switch-client -c`) cannot be resolved at
+startup, and no `list-clients` heuristic is reliable because the user is typically
+attached to a *different* session than the nav pane's session when they press Enter.
+
+The current mitigation (commit `e74d54b`) routes focus through Hyprland instead:
+- If a terminal already has the target session open → `hyprctl dispatch focuswindow` to
+  bring that terminal's window to the front, crossing workspaces if needed.
+- If no terminal has the session → `hyprctl dispatch exec` to spawn a new `kitty` on the
+  current workspace, attaching to the target session.
+
+This works but is Hyprland-specific and always spawns a new kitty when no terminal has
+the session, rather than reusing the existing terminal.
+
+**Research directions (not yet evaluated)**:
+
+1. **Pass tty at respawn time** — `orchestrator.sh` could capture the invoking terminal's
+   tty (`tty` or `$SSH_TTY`) and inject it as `AID_CALLER_CLIENT` into the
+   `respawn-pane` command inline. Blocker: `tty` only works when the calling shell is a
+   tty; the nav pane is re-spawned on every session resurrect, which may not have a
+   calling tty at all.
+
+2. **tmux hook — client-attached/client-detached** — maintain a session-local tmux env
+   var `AID_LAST_CLIENT` updated by a `client-attached` hook. When the nav pane fires
+   `switch-client`, read `AID_LAST_CLIENT` as the `-c` target. This is racy (hook fires
+   asynchronously) but may be reliable enough in practice.
+
+3. **Sidecar client-tracker** — a tiny daemon (shell or Bun) that `list-clients` on an
+   interval or via a tmux hook and writes the most-recently-active client tty to a file.
+   The nav pane reads that file at action time. Trade-off: polling overhead / staleness.
+
+4. **tmux `display-message -c` at action time** — when the user actually presses Enter,
+   query `tmux list-clients` at that instant (not at startup), take the most recently
+   active client, and use it for `switch-client -c`. This avoids the startup-tty problem
+   entirely. Potential issue: if the user has multiple terminals, the heuristic may pick
+   the wrong one.
+
+**Consequence for current code**: `BUG-024` is closed as mitigated. This ADR tracks the
+open research question. Once a direction is validated, it should become a **Made** ADR
+and the Hyprland-specific fallback in `aid-sessions.ts` should become an optional
+enhancement layer rather than the primary path.
 
 ---
 

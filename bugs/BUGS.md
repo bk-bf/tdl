@@ -3,6 +3,13 @@
 
 ## Open
 
+### BUG-024: Cross-session conversation switching does not work in orchestrator nav pane
+
+**Status**: open — investigation in progress  
+**Branch**: `feature/orchestrator`  
+**Repro**: run `aid --mode orchestrator` with two sessions; select a conversation belonging to the other session and press Enter — terminal does not jump to the foreign session.  
+**Notes**: root cause 1 fixed (b1ee4ee: `"not a tty"` stored as `AID_CALLER_CLIENT`). Root cause 2 (`display-message #{client_tty}` returns empty for respawned pane with no attached client) may still block after fix. Next test will confirm whether `list-clients` fallback resolves the correct tty. See [BUG-024.md](BUG-024.md).
+
 ### BUG-018: bufferline tab bar does not show opened files
 
 **Status**: closed — needs monitoring for confimation

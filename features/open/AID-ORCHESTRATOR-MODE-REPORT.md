@@ -270,3 +270,10 @@ Everything else — what opencode does, what the diff tool shows, what nvim edit
 - **opencode HTTP API** — conversation switching is instant via `POST /tui/select-session`, no process restarts, no lost state
 - **Zero GUI dependency** — runs over any SSH connection, survives disconnects, works in any terminal
 - **Composable with `--fleet`** — orchestrator mode is the daily driver; fleet mode is invocable from within any orchestrator session when a task warrants parallel sub-agents
+
+
+---
+The start: bind (first load)
+--bind "start:reload(aid-sessions-list 2>/dev/null || true)"
+This fires once when fzf first opens. It doesn't need position preservation — there's no prior position — so it's a plain reload. Without this, fzf would show an empty list for the first 2 seconds until the ticker fires.
+

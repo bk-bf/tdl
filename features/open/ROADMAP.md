@@ -21,9 +21,9 @@
 
 Orchestrator mode is the tmux-native solo orchestration layout for `aid` that replicates the T3/Codex parallel workflow in the terminal. A human operator runs multiple live opencode sessions simultaneously — one per task or project context — and switches between them with full spatial continuity. All sessions stay alive in the background; the operator moves focus, not the agents.
 
-Three-pane layout: session navigator (left, `~25%`) + active opencode (center, `~50%`) + lazygit diff review (right, `~25%`) + nvim tab (`prefix+n`). Each opencode session maps 1:1 to a tmux session named `aid@<project>/<session>`. The session navigator surfaces as a global `prefix+s` popup overlay, grouping sessions by project in a folder-like tree.
+Three-pane layout: session navigator (left, `~20%`) + active opencode (center, `~55%`) + `aid-diff` live diff review (right, `~25%`). Each opencode session maps 1:1 to a tmux session named `aid@<project>`. The session navigator surfaces as the persistent left pane within each session.
 
-- [x] **T-ORC-1**: `aid --mode orchestrator` bootstrap — create `aid/dashboard` tmux session, spawn initial 3-pane layout (opencode center, lazygit right, nvim tab), register global `prefix+s` popup binding
+- [x] **T-ORC-1**: `aid --mode orchestrator` bootstrap — create `aid@<name>` tmux session, spawn 3-pane layout (navigator left `~20%`, opencode center `~55%`, `aid-diff` right `~25%`), export session-local env vars
 - [x] **T-ORC-2**: Session navigator (`aid-sessions`) — shell script + fzf that reads all `aid/*/*` tmux sessions, groups by project slug, renders tree with status indicators (running/idle + last activity), calls `tmux switch-client` on selection
 - [x] **T-ORC-3**: New session flow — `n` in navigator prompts for project + session name (defaults: repo basename + branch), creates `aid/<project>/<session>` tmux session with full 3-pane layout
 - [x] **T-ORC-4**: Session metadata persistence — maintain `~/.local/share/aid/sessions.json` with repo path, branch, created/last-active timestamps; enables navigator to show branch names and enables session resurrection after tmux server restart
