@@ -34,11 +34,10 @@
 #   AID_DEBUG_LOG  — if set, debug lines are appended to this file
 #
 # Implementation note:
-#   Menu item commands use native tmux `set-environment -g` to record the
-#   chosen label in the tmux global environment.  This runs synchronously in
-#   the tmux server when the item is selected, so the answer is always
-#   available immediately after `display-menu` returns — no fifo or run-shell
-#   needed.
+#   Menu item commands use tmux `run-shell` to write the chosen label to a
+#   temp file.  This is more reliable than `set-environment -g` because
+#   display-menu item commands run in the server's command parser context
+#   which may target a different socket than the -L aid run-shell caller.
 
 set -euo pipefail
 
@@ -79,11 +78,14 @@ _dbg() {
   printf '%s POPUP %s\n' "$_ms" "$*" >> "$AID_DEBUG_LOG"
 }
 
-# ── Unique environment variable for this invocation ───────────────────────────
-# Use a per-invocation variable name so nested/concurrent popups don't collide.
+# ── Unique answer file for this invocation ────────────────────────────────────
+# Use a temp file instead of a tmux env var — display-menu item commands run
+# in the server's command parser which may not share the same -L socket context
+# as the calling run-shell subprocess.
 _envvar="AID_POPUP_$$"
+_ansfile=$(mktemp "/tmp/aid-popup-$$.XXXXXX")
 
-# Seed the variable as empty so show-environment always finds it.
+# Seed the tmux env var as empty (kept for backwards compat / debug).
 tmux -L aid set-environment -g "$_envvar" ""
 
 _dbg "envvar=${_envvar} title='${_title}' items=$*"
@@ -109,7 +111,7 @@ for _item in "$@"; do
     _label="$_item"
     _key=""
   fi
-  _menu_args+=("$_label" "$_key" "set-environment -g ${_envvar} $(printf '%q' "$_label")")
+  _menu_args+=("$_label" "$_key" "run-shell 'printf %s $(printf '%q' "$_label") > $(printf '%q' "$_ansfile")'")
 done
 
 # ── Show the menu (blocks until user picks or presses Escape) ─────────────────
@@ -125,12 +127,16 @@ _dbg "display-menu rc=${_menu_rc} stderr='${_menu_err}'"
 sleep 0.15
 
 # ── Collect answer ────────────────────────────────────────────────────────────
-# show-environment prints "VAR=value"; strip the "VAR=" prefix.
 _raw=$(tmux -L aid show-environment -g "$_envvar" 2>/dev/null || true)
 _dbg "raw_env='${_raw}'"
-_answer="${_raw#"${_envvar}="}"
+# Read from the answer file (written by the run-shell item command).
+_answer=""
+if [[ -s "$_ansfile" ]]; then
+  _answer=$(cat "$_ansfile")
+fi
+rm -f "$_ansfile"
 
-# Clean up the environment variable.
+# Clean up the tmux env var.
 tmux -L aid set-environment -g -u "$_envvar" 2>/dev/null || true
 
 _dbg "answer='${_answer:-<dismissed>}'"
