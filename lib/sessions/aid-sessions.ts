@@ -325,39 +325,77 @@ async function buildList(): Promise<ListItem[]> {
 }
 
 // ── ANSI terminal rendering ───────────────────────────────────────────────────
+//
+// Colors are loaded at runtime from nvim/lua/palette.lua (the single source of
+// truth for all aid theming). The Lua file uses a consistent line format:
+//   M.key = "#rrggbb"   -- optional comment
+// which is trivial to parse with a regex — no Lua runtime needed.
 
-const A = {
-  reset:      "\x1b[0m",
-  bold:       "\x1b[1m",
-  dim:        "\x1b[2m",
-  italic:     "\x1b[3m",
-  fgWhite:    "\x1b[97m",
-  fgGreen:    "\x1b[32m",
-  fgBrGreen:  "\x1b[92m",
-  fgRed:      "\x1b[31m",
-  fgBrRed:    "\x1b[91m",
-  fgBlue:     "\x1b[34m",
-  fgBrBlue:   "\x1b[94m",
-  fgCyan:     "\x1b[36m",
-  fgBrCyan:   "\x1b[96m",
-  fgYellow:   "\x1b[33m",
-  fgBrYellow: "\x1b[93m",
-  fgGray:     "\x1b[90m",
-  fgMagenta:  "\x1b[35m",
-  // Backgrounds
-  bgSelected: "\x1b[48;5;238m",   // medium-dark grey (was 236 = almost invisible)
-  bgTitleBar: "\x1b[48;5;17m",    // deep navy blue
-  bgDeadBadge:"\x1b[48;5;52m",    // dark red
-  bgLiveBadge:"\x1b[48;5;22m",    // dark green
-  // Alternate screen buffer — no scrollback, no history leak
-  altScreenOn:  "\x1b[?1049h",
-  altScreenOff: "\x1b[?1049l",
-  clearScreen:  "\x1b[2J\x1b[H",
-  hideCursor:   "\x1b[?25l",
-  showCursor:   "\x1b[?25h",
-  // Move cursor to absolute row (1-based), column 1, then erase to end of line
-  moveTo: (row: number) => `\x1b[${row};1H\x1b[K`,
-};
+/** Parse nvim/lua/palette.lua and return a key→hex map. */
+function loadPalette(): Record<string, string> {
+  const luaPath = join(AID_DIR, "nvim/lua/palette.lua");
+  let src = "";
+  try { src = readFileSync(luaPath, "utf-8"); } catch {
+    dbg("WARN", `palette.lua not found at ${luaPath}, using fallbacks`);
+  }
+  const map: Record<string, string> = {};
+  for (const line of src.split("\n")) {
+    const m = line.match(/^\s*M\.(\w+)\s*=\s*"(#[0-9a-fA-F]{6})"/);
+    if (m) map[m[1]] = m[2];
+  }
+  return map;
+}
+
+/** Parse a #rrggbb hex string into [r, g, b]. */
+function hex(h: string): [number, number, number] {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+const tc = (r: number, g: number, b: number) => `\x1b[38;2;${r};${g};${b}m`;
+const bc = (r: number, g: number, b: number) => `\x1b[48;2;${r};${g};${b}m`;
+
+function buildAnsi(p: Record<string, string>) {
+  // Helper: fg/bg from a palette key, with a fallback hex if the key is absent.
+  const pfg = (key: string, fb: string) => { const [r,g,b] = hex(p[key] ?? fb); return tc(r,g,b); };
+  const pbg = (key: string, fb: string) => { const [r,g,b] = hex(p[key] ?? fb); return bc(r,g,b); };
+
+  return {
+    reset:  "\x1b[0m",
+    bold:   "\x1b[1m",
+    dim:    "\x1b[2m",
+    italic: "\x1b[3m",
+
+    // Foreground
+    fgWhite:    pfg("fg",        "#ffffff"),
+    fgPurple:   pfg("purple",    "#b57bee"),
+    fgBlue:     pfg("blue",      "#6180C5"),
+    fgLavender: pfg("lavender",  "#A284C6"),
+    fgGreen:    pfg("git_add",   "#50fa7b"),
+    fgRed:      pfg("git_del",   "#ff5555"),
+    fgAmber:    pfg("git_chg",   "#ffaa00"),
+    fgMatch:    pfg("cmp_match", "#caa5f7"),
+    fgGray:     pfg("cmp_menu",  "#7a6e96"),
+
+    // Background
+    bgTitleBar:  pbg("blue",       "#6180C5"),
+    bgSelected:  pbg("cmp_sel_bg", "#3a3450"),
+    bgLiveBadge: pbg("tab_sel",    "#a06a45"),
+    bgDeadBadge: pbg("git_del_ln", "#3d1a1a"),
+
+    // Terminal control
+    altScreenOn:  "\x1b[?1049h",
+    altScreenOff: "\x1b[?1049l",
+    clearScreen:  "\x1b[2J\x1b[H",
+    hideCursor:   "\x1b[?25l",
+    showCursor:   "\x1b[?25h",
+    moveTo: (row: number) => `\x1b[${row};1H\x1b[K`,
+  };
+}
+
+// Populated in boot() after AID_DIR is validated; safe to use in any function
+// called after boot() has started (all rendering happens after).
+let A = buildAnsi({});  // fallback colors until palette is loaded
 
 function termSize(): { cols: number; rows: number } {
   return {
@@ -427,10 +465,10 @@ function renderItem(
   /** total number of convs in this session's group */
   convTotal = 0,
 ): string {
-  const bg   = selected ? A.bgSelected : "";
-  const rst  = A.reset;
-  // Restore bg after an inline reset so the highlight stays consistent
-  const rbg  = `${rst}${bg}`;
+  const selBg = selected ? A.bgSelected : "";
+  const rst   = A.reset;
+  // Restore selBg after an inline reset so the highlight stays consistent
+  const rbg   = `${rst}${selBg}`;
 
   let content = "";
 
@@ -442,22 +480,23 @@ function renderItem(
       const name = session.replace(/^aid@/, "");
       const m    = metaFor(session);
 
-      // Project short name = last path segment
       const projName = m?.repo_path
         ? m.repo_path.replace(/\/$/, "").split("/").pop() ?? name
         : name;
 
-      // Left side: caret + project name + optional branch
-      const caret  = isCurrent
-        ? `${A.fgBrCyan}${A.bold}❯${rbg} `
+      // Current session: purple caret; others: dim gray dot
+      const caret = isCurrent
+        ? `${A.fgPurple}${A.bold}❯${rbg} `
         : `${A.fgGray}·${rbg} `;
       const branch = m?.branch
         ? ` ${A.fgGray}(${m.branch})${rbg}`
         : "";
-      const left = `${bg}${caret}${A.bold}${A.fgBrCyan}${projName}${rbg}${branch}`;
+      // Project name: purple when current, lavender otherwise
+      const nameColor = isCurrent ? A.fgPurple : A.fgLavender;
+      const left = `${selBg}${caret}${A.bold}${nameColor}${projName}${rbg}${branch}`;
 
-      // Right side: [live] badge
-      const liveBadge = ` ${A.bgLiveBadge}${A.fgBrGreen}${A.bold} live ${rst}${bg}`;
+      // live badge: warm orange bg, bright green text (tab_sel + git_add)
+      const liveBadge = ` ${A.bgLiveBadge}${A.fgGreen}${A.bold} live ${rst}${selBg}`;
 
       content = rightAlign(left, liveBadge, cols);
       break;
@@ -472,8 +511,8 @@ function renderItem(
         ? m.repo_path.replace(/\/$/, "").split("/").pop() ?? name
         : name;
 
-      const left = `${bg}  ${A.dim}${A.fgGray}${projName}${rbg}`;
-      const right = `${A.dim}${age} ${A.bgDeadBadge}${A.fgBrRed}${A.bold} dead ${rst}${bg}`;
+      const left  = `${selBg}  ${A.dim}${A.fgGray}${projName}${rbg}`;
+      const right = `${A.dim}${A.fgGray}${age} ${A.bgDeadBadge}${A.fgRed}${A.bold} dead ${rst}${selBg}`;
       content = rightAlign(left, right, cols);
       break;
     }
@@ -482,31 +521,30 @@ function renderItem(
     case "conv": {
       const { title, age, active } = item.kind;
 
-      // Tree connector — last conv gets └─, others get ├─
       const isLast   = convIndex === convTotal - 1;
       const treeChar = isLast ? "└─" : "├─";
-      const treePfx  = `${A.fgGray}${treeChar}${rbg}`;
+      // Tree connector: lavender
+      const treePfx  = `${A.fgLavender}${treeChar}${rbg}`;
 
-      // Active marker
+      // Active: purple filled circle; inactive: dim gray hollow circle
       const marker = active
-        ? `${A.fgBrYellow}${A.bold}●${rbg} `
+        ? `${A.fgPurple}${A.bold}●${rbg} `
         : `${A.fgGray}○${rbg} `;
 
-      // Title color: active = brighter
-      const titleColor = active
-        ? `${A.bold}${A.fgWhite}`
-        : ``;
+      // Title: bright white when active, default otherwise
+      const titleFmt = active ? `${A.bold}${A.fgWhite}` : "";
 
-      const left = `${bg} ${treePfx} ${marker}${titleColor}${title}${rbg}`;
-      const right = `${A.dim}${A.fgGray}${age}${rbg}`;
+      const left  = `${selBg} ${treePfx} ${marker}${titleFmt}${title}${rbg}`;
+      // Age: amber (git_chg color)
+      const right = `${A.fgAmber}${A.dim}${age}${rbg}`;
       content = rightAlign(left, right, cols);
       break;
     }
 
     // ── separator between session groups ─────────────────────────────────────
     case "sep": {
-      // Thin colored rule
-      return `${A.fgGray}${A.dim}${"─".repeat(cols)}${rst}`;
+      // Blue tinted dim rule (matches title bar hue)
+      return `${A.fgBlue}${A.dim}${"─".repeat(cols)}${rst}`;
     }
 
     // ── empty placeholder ─────────────────────────────────────────────────────
@@ -514,7 +552,7 @@ function renderItem(
       const msg = item.kind.reason === "no-sessions"
         ? "no sessions yet"
         : "no conversations yet";
-      content = `${bg} ${A.fgGray}└─ ${A.dim}${msg}${rbg}`;
+      content = `${selBg} ${A.fgLavender}└─ ${A.dim}${A.fgGray}${msg}${rbg}`;
       break;
     }
   }
@@ -571,8 +609,8 @@ function buildFrame(): string[] {
   // Uses rightAlign so the right label is dropped when cols is too narrow.
   // clampLine in render() guarantees the line never wraps regardless.
   const sessionLabel = AID_ORC_NAME ? ` aid@${AID_ORC_NAME}` : " aid";
-  const titleLeft    = `${A.bgTitleBar}${A.fgBrCyan}${A.bold}${sessionLabel}`;
-  const titleRight   = `${A.bgTitleBar}${A.dim}${A.fgGray} sessions ${A.reset}`;
+  const titleLeft    = `${A.bgTitleBar}${A.fgWhite}${A.bold}${sessionLabel}`;
+  const titleRight   = `${A.bgTitleBar}${A.dim}${A.fgMatch} sessions ${A.reset}`;
   lines.push(rightAlign(titleLeft, titleRight, cols));
 
   // Body area: rows minus title(1) + status(1) + footer(1) + spare(1)
@@ -633,7 +671,7 @@ function buildFrame(): string[] {
       if (isCursorItem && state.mode.type === "rename") {
         const indent = item.kind.type === "conv" ? "    " : "  ";
         const input  = state.mode.input;
-        const line   = `${A.bgSelected}${indent}${A.bold}rename:${A.reset}${A.bgSelected} ${input}${A.fgBrCyan}█${A.reset}`;
+        const line   = `${A.bgSelected}${indent}${A.bold}rename:${A.reset}${A.bgSelected} ${input}${A.fgPurple}█${A.reset}`;
         const visLen = stripAnsi(line).length;
         const pad    = Math.max(0, cols - visLen);
         lines.push(line + " ".repeat(pad) + A.reset);
@@ -651,7 +689,7 @@ function buildFrame(): string[] {
 
   // Status line
   if (state.statusMsg) {
-    lines.push(`  ${A.fgBrYellow}${state.statusMsg}${A.reset}`);
+    lines.push(`  ${A.fgAmber}${state.statusMsg}${A.reset}`);
   } else {
     lines.push("");
   }
@@ -681,7 +719,8 @@ function render(): void {
 }
 
 function buildFooter(mode: Mode, _cols: number): string {
-  const k  = (s: string) => `${A.reset}${A.bold}${A.fgBrCyan}${s}${A.reset}${A.dim}`;
+  // Key hint: purple bold key, then dim gray description
+  const k   = (s: string) => `${A.reset}${A.bold}${A.fgPurple}${s}${A.reset}${A.dim}`;
   const sep = `${A.fgGray}  ·  `;
   switch (mode.type) {
     case "nav":
@@ -707,9 +746,9 @@ function buildFooter(mode: Mode, _cols: number): string {
     case "delete-confirm": {
       const label = itemLabel(mode.item);
       return (
-        `  ${A.fgBrRed}${A.bold}delete${A.reset} ` +
+        `  ${A.fgRed}${A.bold}delete${A.reset} ` +
         `${A.dim}${label}${A.reset}  ` +
-        `${A.bold}${A.fgBrYellow}y${A.reset}${A.dim}/${A.reset}${A.bold}n${A.reset}${A.dim}?${A.reset}`
+        `${A.bold}${A.fgAmber}y${A.reset}${A.dim}/${A.reset}${A.bold}n${A.reset}${A.dim}?${A.reset}`
       );
     }
   }
@@ -1099,6 +1138,10 @@ async function pruneDead(): Promise<void> {
 
 async function boot(): Promise<void> {
   dbg("INIT", `aid-sessions.ts starting (pid=${process.pid} pane=${TMUX_PANE})`);
+
+  // Load palette from nvim/lua/palette.lua — must happen before any render.
+  A = buildAnsi(loadPalette());
+  dbg("INIT", "palette loaded");
 
   // Resolve caller client tty + self-heal session tag — run in parallel
   const initTasks: Promise<unknown>[] = [];
