@@ -45,23 +45,31 @@ function dbg(cat: string, msg: string): void {
 // ── tmux helpers ──────────────────────────────────────────────────────────────
 
 async function tmuxOutput(...args: string[]): Promise<string> {
-  const proc = Bun.spawn(["tmux", "-L", "aid", ...args], {
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-  const out = await new Response(proc.stdout).text();
-  await proc.exited;
-  return out.trim();
+  try {
+    const proc = Bun.spawn(["tmux", "-L", "aid", ...args], {
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    return out.trim();
+  } catch {
+    return "";
+  }
 }
 
 // Returns true if exit code was 0
 async function tmuxRun(...args: string[]): Promise<boolean> {
-  const proc = Bun.spawn(["tmux", "-L", "aid", ...args], {
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  const code = await proc.exited;
-  return code === 0;
+  try {
+    const proc = Bun.spawn(["tmux", "-L", "aid", ...args], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    const code = await proc.exited;
+    return code === 0;
+  } catch {
+    return false;
+  }
 }
 
 // ── Sessions metadata (sessions.json) ─────────────────────────────────────────
@@ -820,6 +828,9 @@ process.on("SIGTERM", () => { cleanup(); process.exit(0); });
 process.on("SIGINT", () => { cleanup(); process.exit(0); });
 // SIGHUP: survive tmux respawn-pane -k which sends SIGHUP to the pane process group
 process.on("SIGHUP", () => { /* ignore */ });
+// Safety net: always restore terminal on any unhandled error before dying
+process.on("uncaughtException", (e) => { dbg("ERR", `uncaught: ${e}`); cleanup(); process.exit(1); });
+process.on("unhandledRejection", (e) => { dbg("ERR", `unhandledRejection: ${e}`); cleanup(); process.exit(1); });
 process.stdout.on("resize", () => { render(); });
 
 // ── Background dead-session prune ─────────────────────────────────────────────
@@ -889,7 +900,7 @@ async function boot(): Promise<void> {
 
   // Auto-refresh every 5s (only while in nav mode to avoid interrupting rename/delete)
   refreshTimer = setInterval(() => {
-    if (state.mode.type === "nav") refresh();
+    if (state.mode.type === "nav") refresh().catch((e) => dbg("ERR", `interval refresh: ${e}`));
   }, 5000);
 
   dbg("INIT", "boot complete");
