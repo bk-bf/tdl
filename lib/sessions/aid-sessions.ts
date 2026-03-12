@@ -103,45 +103,44 @@ function metaFor(session: string): SessionMeta | undefined {
   return readMeta().find((m) => m.tmux_session === session);
 }
 
-// ── Session ownership via workspace_id ───────────────────────────────────────
+// ── Conv ownership sidecar DB ─────────────────────────────────────────────────
 //
-// opencode's `session` table has a `workspace_id` column that is indexed but
-// always NULL. We repurpose it to store the aid tmux session name, using a
-// strict first-writer-wins rule (never overwrite a non-NULL value). This means:
+// We cannot write to opencode's DB while it is running (bun:sqlite crashes
+// with "bad parameter or other API misuse" when a WAL-mode DB is locked by
+// another writer). Instead we maintain our own tiny sidecar:
 //
-//   • When orcConversations() gets a live list from the HTTP API, any conv that
-//     has workspace_id IS NULL gets tagged with the current tmux session name.
-//   • Convs already tagged (workspace_id IS NOT NULL) keep their owner.
-//   • Filtering is then just: WHERE workspace_id = <tmuxSession> (or IS NULL for
-//     the very first boot before any tagging has happened for that session).
+//   $AID_DIR/opencode/aid-conv-owners.db
+//   table: conv_owner (id TEXT PRIMARY KEY, tmux_session TEXT NOT NULL)
 //
-// Because we never overwrite, restarting an aid session under the same name
-// correctly re-adopts all previously-tagged convs. Two instances running from
-// the same directory race to tag new convs — first writer wins, which is fine
-// because opencode only surfaces a new conv to the instance that created it
-// first (the creator's navigator will win the write).
+// INSERT OR IGNORE gives us first-writer-wins for free: whichever nav process
+// inserts a conv_id first owns it; subsequent inserts for the same id are
+// silently dropped. On session restart the rows survive and the session
+// re-adopts its history immediately.
 
-// opencode stores its DB under XDG_DATA_HOME/opencode/opencode.db.
-// orchestrator.sh launches opencode with XDG_DATA_HOME=$AID_DIR, so the DB
-// lives at $AID_DIR/opencode/opencode.db — NOT $AID_DATA/opencode/opencode.db.
+const OWNERS_DB_PATH = join(AID_DIR, "opencode/aid-conv-owners.db");
+// opencode's DB — opened readonly only, for the offline fallback.
 const OPENCODE_DB = join(AID_DIR, "opencode/opencode.db");
 
-/**
- * Tag convs that are still unowned (workspace_id IS NULL) as belonging to
- * `tmuxSession`. Skips convs that already have an owner. Writes directly to
- * the shared SQLite DB with first-writer-wins semantics.
- */
+function openOwnersDb(readonly = false): Database {
+  const db = new Database(OWNERS_DB_PATH, { create: !readonly, readonly });
+  db.run(`CREATE TABLE IF NOT EXISTS conv_owner (
+    id           TEXT PRIMARY KEY,
+    tmux_session TEXT NOT NULL
+  )`);
+  return db;
+}
+
+/** Claim any unowned conv IDs for `tmuxSession`. First-writer-wins via INSERT OR IGNORE. */
 function tagConvsInDb(convIds: string[], tmuxSession: string): void {
   if (convIds.length === 0) return;
   try {
-    const db = new Database(OPENCODE_DB, { create: false });
+    const db = openOwnersDb();
     try {
-      // Only update rows where workspace_id is still NULL — never overwrite.
-      const placeholders = convIds.map(() => "?").join(",");
-      db.run(
-        `UPDATE session SET workspace_id = ? WHERE id IN (${placeholders}) AND workspace_id IS NULL`,
-        [tmuxSession, ...convIds],
-      );
+      const insert = db.prepare("INSERT OR IGNORE INTO conv_owner (id, tmux_session) VALUES (?, ?)");
+      const insertMany = db.transaction((ids: string[]) => {
+        for (const id of ids) insert.run(id, tmuxSession);
+      });
+      insertMany(convIds);
     } finally {
       db.close();
     }
@@ -150,23 +149,20 @@ function tagConvsInDb(convIds: string[], tmuxSession: string): void {
   }
 }
 
-/**
- * Read the workspace_id for a set of conv IDs.
- * Returns a map of id → workspace_id (only includes rows that have a non-NULL value).
- */
+/** Return a map of conv_id → tmux_session for the given IDs (only those with an owner). */
 function readConvOwners(convIds: string[]): Map<string, string> {
   const result = new Map<string, string>();
   if (convIds.length === 0) return result;
   try {
-    const db = new Database(OPENCODE_DB, { readonly: true, create: false });
+    const db = openOwnersDb(true);
     try {
       const placeholders = convIds.map(() => "?").join(",");
       const rows = db
-        .query<{ id: string; workspace_id: string }, string[]>(
-          `SELECT id, workspace_id FROM session WHERE id IN (${placeholders}) AND workspace_id IS NOT NULL`,
+        .query<{ id: string; tmux_session: string }, string[]>(
+          `SELECT id, tmux_session FROM conv_owner WHERE id IN (${placeholders})`,
         )
         .all(...convIds);
-      for (const r of rows) result.set(r.id, r.workspace_id);
+      for (const r of rows) result.set(r.id, r.tmux_session);
     } finally {
       db.close();
     }
@@ -176,21 +172,35 @@ function readConvOwners(convIds: string[]): Map<string, string> {
   return result;
 }
 
-/** Read convs from SQLite owned by `tmuxSession` (workspace_id = tmuxSession). */
+/** Read convs from opencode's SQLite for IDs owned by `tmuxSession` (offline fallback). */
 function convosFromDbForSession(tmuxSession: string): OrcConversation[] {
   try {
-    const db = new Database(OPENCODE_DB, { readonly: true, create: false });
+    // Get owned IDs from our sidecar.
+    const db = openOwnersDb(true);
+    let ids: string[] = [];
     try {
-      const rows = db
-        .query<{ id: string; title: string; directory: string; time_updated: number }, [string]>(
-          `SELECT id, title, directory, time_updated FROM session
-           WHERE time_archived IS NULL AND workspace_id = ?
-           ORDER BY time_updated DESC`,
-        )
-        .all(tmuxSession);
-      return rows.map((r) => ({ id: r.id, title: r.title, directory: r.directory, time: { updated: r.time_updated } }));
+      ids = db
+        .query<{ id: string }, [string]>("SELECT id FROM conv_owner WHERE tmux_session = ?")
+        .all(tmuxSession)
+        .map((r) => r.id);
     } finally {
       db.close();
+    }
+    if (ids.length === 0) return [];
+    // Fetch conv details from opencode's DB (readonly — safe while opencode runs).
+    const oc = new Database(OPENCODE_DB, { readonly: true, create: false });
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      const rows = oc
+        .query<{ id: string; title: string; directory: string; time_updated: number }, string[]>(
+          `SELECT id, title, directory, time_updated FROM session
+           WHERE time_archived IS NULL AND id IN (${placeholders})
+           ORDER BY time_updated DESC`,
+        )
+        .all(...ids);
+      return rows.map((r) => ({ id: r.id, title: r.title, directory: r.directory, time: { updated: r.time_updated } }));
+    } finally {
+      oc.close();
     }
   } catch (e) {
     dbg("SQLITE", `convosFromDbForSession failed: ${e}`);
@@ -242,23 +252,18 @@ async function orcConversations(port: number, tmuxSession: string): Promise<OrcC
       if (resp.ok) {
         const all = (await resp.json()) as OrcConversation[];
         // Tag unowned convs in the DB (first-writer-wins, never overwrites).
-        // This must happen before we filter so that newly created convs get claimed.
+        // Claim any unowned convs for this session (INSERT OR IGNORE = first-writer-wins).
         tagConvsInDb(all.map((c) => c.id), tmuxSession);
-        // Now read back the actual ownership from DB and keep only ours.
+        // Read back ownership and keep only ours.
         const owners = readConvOwners(all.map((c) => c.id));
-        const owned = all.filter((c) => {
-          const owner = owners.get(c.id);
-          // Keep if we own it, OR if it's still untagged (race window: tag write
-          // may not be visible yet in a concurrent read — show it optimistically).
-          return !owner || owner === tmuxSession;
-        });
+        const owned = all.filter((c) => owners.get(c.id) === tmuxSession);
         const sorted = owned.sort((a, b) => b.time.updated - a.time.updated);
         dbg("ORC", `port=${port} all=${all.length} owned=${owned.length}`);
         return sorted;
       }
     } catch { /* fall through to DB */ }
   }
-  // Port offline — query SQLite directly by workspace_id.
+  // Port offline — look up owned IDs from sidecar, fetch details from opencode DB.
   return convosFromDbForSession(tmuxSession);
 }
 
